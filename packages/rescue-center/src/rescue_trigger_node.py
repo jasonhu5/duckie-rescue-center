@@ -12,7 +12,8 @@ class RescueTriggerNode(DTROS):
         # initialize DTROS parent class
         super(RescueTriggerNode, self).__init__(node_name=node_name)
         # get robot name
-        self.veh_name = rospy.get_namespace().strip("/")
+        # self.veh_name = rospy.get_namespace().strip("/")
+        self.veh_name = os.environ["AUTOBOT_NAME"]
         # topics
         self.pub_on = rospy.Publisher(
             "/{}/recovery_mode".format(self.veh_name), BoolStamped, queue_size=1)

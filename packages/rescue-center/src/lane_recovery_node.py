@@ -10,7 +10,9 @@ class lane_recovery(object):
 
     def __init__(self):
         self.node_name = rospy.get_name()
-        self.pub_car_cmd = rospy.Publisher("~car_cmd", Twist2DStamped, queue_size=1)
+        self.veh_name = os.environ["AUTOBOT_NAME"]
+        self.pub_car_cmd = rospy.Publisher("/{}/lane_recovery_node/car_cmd".format(
+            self.veh_name), Twist2DStamped, queue_size=1)
 
 
     def run(self):
