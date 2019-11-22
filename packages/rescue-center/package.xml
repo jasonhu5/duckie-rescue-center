@@ -1,0 +1,13 @@
+<package>
+  <name>rescue-center</name>
+  <version>0.1.0</version>
+  <description>
+  This package is the rescue module.
+  </description>
+  <maintainer email="xum@student.ethz.ch">Martin Ziran Xu</maintainer>
+  <maintainer email="shhu@student.ethz.ch">Shengjie Hu</maintainer>
+  <maintainer email="carlbi@student.ethz.ch">Carl Biagosch</maintainer>
+  <license>None</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+</package>
