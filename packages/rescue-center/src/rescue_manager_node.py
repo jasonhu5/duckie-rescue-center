@@ -8,12 +8,19 @@ from duckietown_msgs.msg import BoolStamped, Twist2DStamped, FSMState
 from visualization_msgs.msg import Marker, MarkerArray
 
 
-class RescueTriggerNode(DTROS):
+class RescueManagerNode(DTROS):
 
     def __init__(self, node_name):
 
         # initialize DTROS parent class
-        super(RescueTriggerNode, self).__init__(node_name=node_name)
+        super(RescueManagerNode, self).__init__(node_name=node_name)
+        self.distressed_veh = rospy.get_param("~distressed_veh") # this has to be specified, when launching the node (see below)
+  #       <node pkg="rescue_center" type="rescue_manager_node.py" name="rescue_manager_XY" output="screen">
+  #             <param name="~distressed_veh" type="string" value="autobot27" />
+  #        </node>
+        self.rescue_classification
+
+        self.sub = rospy.Subscriber("/rescue_node/", FSMState, self.cb_fsm, callback_args=veh_name)
 
         # get robot names: currently this is passed as ENVIRONMENT Variables
         # when running docker run
@@ -47,15 +54,7 @@ class RescueTriggerNode(DTROS):
                 "/{}/recovery_mode".format(veh_name),
                 BoolStamped,
                 queue_size=1,
-            )
-        # 2. Rescue Classification for rescue_manager
-        self.pub_rescueClassfication = dict()
-        for veh_name in self.veh_list:
-            self.pub_rescueClassfication[veh_name] = rospy.Publisher(
-                "/{}/recovery_mode".format(veh_name),
-                String,
-                queue_size=1,
-            )
+            ))
 
         #
         # self.pub_car_cmd = rospy.Publisher(
