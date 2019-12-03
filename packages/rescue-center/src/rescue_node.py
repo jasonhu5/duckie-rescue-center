@@ -17,11 +17,12 @@ class RescueTriggerNode(DTROS):
 
         # get robot names: currently this is passed as ENVIRONMENT Variables
         # when running docker run
-        n_duckiebots = os.environ["AUTOBOT_NUMBER"]
+        n_duckiebots = 2
         start_duckiebot = os.environ["AUTOBOT_START"]
+        param_base = = "AUTOBOT_"
         self.veh_list= list()
         for i in range(n_duckiebots):
-            self.veh_list.append(str(int(a)+i))
+            self.veh_list.append(os.environ[param_base +str(i+1)])
         # build dictionary
         self.id_dict = dict()
         keys = ["FSM_state", "position_x", "position_y", "heading", "rescue_class", "in_rescue"]
