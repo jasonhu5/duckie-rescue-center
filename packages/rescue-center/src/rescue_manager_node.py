@@ -14,11 +14,18 @@ class RescueManagerNode(DTROS):
 
         # initialize DTROS parent class
         super(RescueManagerNode, self).__init__(node_name=node_name)
-        self.distressed_veh = rospy.get_param("~distressed_veh") # this has to be specified, when launching the node (see below)
+        self.distressed_veh = rospy.get_param("~distressed_veh")
+        self.activated = False
+        self.distressType = 0
+
+
+        # this has to be specified, when launching the node (see below)
   #       <node pkg="rescue_center" type="rescue_manager_node.py" name="rescue_manager_XY" output="screen">
   #             <param name="~distressed_veh" type="string" value="autobot27" />
   #        </node>
-        self.rescue_classification
+        self.rescue_classification =
+
+        self.sub = cb
 
         self.sub = rospy.Subscriber("/rescue_node/", FSMState, self.cb_fsm, callback_args=veh_name)
 

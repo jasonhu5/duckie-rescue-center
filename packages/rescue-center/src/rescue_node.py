@@ -94,6 +94,7 @@ class RescueTriggerNode(DTROS):
                         msg = BoolStamped()
                         msg.data = True
                         self.pub_trigger[idx].publish(msg)
+                        self.pub_rescueClassfication[ix].publish(str(rescue_class))
                         self.id_dict[idx]["in_rescue"] = True
 
                 # self.trigger = True if y > 0.5 else False
