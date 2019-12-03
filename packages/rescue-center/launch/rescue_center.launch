@@ -1,5 +1,5 @@
 <launch>
-    <arg name="veh" default="$(env AUTOBOT_NAME)"/>
+    <!-- <arg name="veh" default="$(env AUTOBOT_NAME)"/> -->
     <group ns="$(arg veh)">
         <!-- <node pkg="rescue-center" type="lane_recovery_node.py" name="lane_recovery_node" output="screen"/> -->
         <node pkg="rescue-center" type="rescue_node.py" name="rescue_node" output="screen">
