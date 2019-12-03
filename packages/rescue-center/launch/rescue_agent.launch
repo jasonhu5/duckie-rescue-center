@@ -1,0 +1,6 @@
+<launch>
+    <arg name="bot"/>
+    <group ns="$(arg bot)">
+        <node pkg="rescue-center" type="rescue_agent_node.py" name="rescue_agent_$(arg bot)" output="screen"/>
+    </group>
+</launch>

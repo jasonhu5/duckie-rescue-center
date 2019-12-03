@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import os
 import rospy
+import subprocess
 from duckietown import DTROS
 from std_msgs.msg import String
 from duckietown_msgs.msg import BoolStamped, Twist2DStamped
@@ -45,6 +46,7 @@ class RescueTriggerNode(DTROS):
         self.trigger = self.rescue_on
 
         self.prev_cmd_pub = True 
+        self.lst_botIDs = []
 
 
     def callback(self, msg):
@@ -53,6 +55,12 @@ class RescueTriggerNode(DTROS):
         for m in markers:
             if m.ns == "duckiebots":
                 idx = m.id
+                if not idx in self.lst_botIDs:
+                    self.lst_botIDs.append(idx)
+                    subprocess.Popen([
+                        "roslaunch", "rescue-center",
+                        "rescue_agent.launch", "bot:=autobot{}".format(idx)
+                    ])
                 x = m.pose.position.x
                 y = m.pose.position.y
                 # self.log("{} {}".format(x, y))
