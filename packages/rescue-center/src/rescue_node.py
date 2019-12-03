@@ -17,17 +17,19 @@ class RescueTriggerNode(DTROS):
 
         # get robot names: currently this is passed as ENVIRONMENT Variables
         # when running docker run
-        n_duckiebots = 3
-        param_name = "AUTOBOT_NAME_"
+        n_duckiebots = os.environ["AUTOBOT_NUMBER"]
+        start_duckiebot = os.environ["AUTOBOT_START"]
         self.veh_list= list()
         for i in range(n_duckiebots):
-            self.veh_list.append(os.environ[param_name+str(i)])
+            self.veh_list.append(str(int(a)+i))
         # build dictionary
         self.id_dict = dict()
         keys = ["FSM_state", "position_x", "position_y", "heading", "rescue_class", "in_rescue"]
         for veh_name in self.veh_list:
             self.id_dict[veh_name] = dict.fromkeys(keys)
             self.id_dict[veh_name]["in_rescue"] = False
+        print("Initialized id_dict:\n       ")
+        print(self.id_dict)
 
         # subscribe to topics
         # 1. online viz
@@ -77,6 +79,7 @@ class RescueTriggerNode(DTROS):
 
     # Callback for online viz
     def cb_visualization(self, msg):
+        print("Received cslam message")
         markers = msg.markers
         bot_poses = []
         for m in markers:
@@ -84,6 +87,7 @@ class RescueTriggerNode(DTROS):
                 idx = m.id
                 x = m.pose.position.x
                 y = m.pose.position.y
+                print("Deteced duckiebot {1} at position ({2}, {3})".format(idx, x, y))
                 self.id_dict[idx]["position_x"] = x;
                 self.id_dict[idx]["position_y"] = y;
                 # self.log("{} {}".format(x, y))
@@ -91,6 +95,7 @@ class RescueTriggerNode(DTROS):
                     rescue_class = self.classifier(x, y, idx)
                     if rescue_class > 0:
                         # publish rescue_class
+                        print("Dukiebot {1} is in distress: {2}".format(idx, rescue_class))
                         msg = BoolStamped()
                         msg.data = True
                         self.pub_trigger[idx].publish(msg)
@@ -113,9 +118,8 @@ class RescueTriggerNode(DTROS):
 
     # Callback for fsm state
     def cb_fsm(self, msg, veh_name):
+        print("Received FSM state from: {}".format(veh_name))
         self.id_dict[veh_name]["FSM_state"] = msg;
-
-
 
     def run(self):
 
@@ -123,19 +127,21 @@ class RescueTriggerNode(DTROS):
         rate = rospy.Rate(4) # 10Hz
 
         while not rospy.is_shutdown():
-            if self.trigger != self.rescue_on:
-                self.rescue_on = self.trigger
-                msg = BoolStamped()
-                msg.data = self.rescue_on
-                # self.log("Sending %s to recovery_mode" % msg.data)
-                self.pub_trigger.publish(msg)
+            # if self.trigger != self.rescue_on:
+            #     self.rescue_on = self.trigger
+            #     msg = BoolStamped()
+            #     msg.data = self.rescue_on
+            #     # self.log("Sending %s to recovery_mode" % msg.data)
+            #     self.pub_trigger.publish(msg)
+            #
+            # if self.rescue_on:
+            #     car_cmd_msg = Twist2DStamped()
+            #     car_cmd_msg.v = -0.1 if not self.prev_cmd_pub else 0.0
+            #     car_cmd_msg.omega = 0.0
+            #     self.pub_car_cmd.publish(car_cmd_msg)
+            #     self.prev_cmd_pub = not self.prev_cmd_pub
 
-            if self.rescue_on:
-                car_cmd_msg = Twist2DStamped()
-                car_cmd_msg.v = -0.1 if not self.prev_cmd_pub else 0.0
-                car_cmd_msg.omega = 0.0
-                self.pub_car_cmd.publish(car_cmd_msg)
-                self.prev_cmd_pub = not self.prev_cmd_pub
+            print("Rescue_node running...")
 
             rate.sleep()
 
