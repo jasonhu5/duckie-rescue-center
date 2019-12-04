@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+
 import os
 import rospy
 import math
@@ -25,23 +26,6 @@ class RescueTriggerNode(DTROS):
         self.dist_thres = 0.5
         # Window for averaging filter
         self.avg_window = 10
-
-        """# get robot names: currently this is passed as ENVIRONMENT Variables
-        # when running docker run
-        n_duckiebots = 2 # TODO: make it better (with YAML or sth)
-        param_base = "AUTOBOT_"
-        self.veh_list= list()
-        for i in range(n_duckiebots):
-            self.veh_list.append(os.environ[param_base +str(i+1)])
-        # build dictionary
-        self.id_dict = dict()
-        keys = ["FSM_state", "position_x", "position_y", "heading", "rescue_class", "in_rescue"]
-        for veh_name in self.veh_list:
-            self.id_dict[veh_name] = dict.fromkeys(keys)
-            self.id_dict[veh_name]["in_rescue"] = False
-            # TODO: intialize other key values
-        print("Initialized id_dict:\n       ")
-        print(self.id_dict)"""
 
         # Subscribe to topics
         # 1. Online localization
@@ -72,27 +56,10 @@ class RescueTriggerNode(DTROS):
                 queue_size=1
             )
 
-        #
-        # self.pub_car_cmd = rospy.Publisher(
-        #     "/{}/lane_recovery_node/car_cmd".format(self.veh_name),
-        #     Twist2DStamped,
-        #     queue_size=1,
-        # )
-
-        # TODO: remove testing param
-        # param for testing
-        # self.parameters['~trigger_rescue'] = None
-        # self.updateParameters()
-        #
-        # # current trigger status
-        # self.rescue_on = False
-        # self.trigger = self.rescue_on
-        #
-        # self.prev_cmd_pub = True
 
     # Callback for online localization
     def cb_localization(self, msg):
-        print("Received cslam message")
+        # print("Received cslam message")
         markers = msg.markers
         for m in markers:
             if m.ns == "duckiebots":
@@ -108,22 +75,22 @@ class RescueTriggerNode(DTROS):
                     ])
                 # Store position from localization system
                 self.id_dict[idx].position = (m.pose.position.x, m.pose.position.y)
-                print("Deteced bot {} at {}".format(idx, self.id_dict[idx].position))
+                # print("Deteced bot {} at {}".format(idx, self.id_dict[idx].position))
                 # Filter position and update last_moved time stamp
                 self.id_dict[idx].update_filtered(m.header.stamp, self.dist_thres, self.avg_window)
-                print("Filtered bot {} at {}".format(idx, self.id_dict[idx].filtered))
+                # print("Filtered bot {} at {}".format(idx, self.id_dict[idx].filtered))
                 # If duckiebot is not currently in rescue, call classifier
                 if not self.id_dict[idx].in_rescue:
-                    rescue_class = self.classifier(self.id_dict[idx])
+                    rescue_class = self.classifier()
                     self.id_dict[idx].rescue_class = rescue_class
-                    if rescue_class > 0:
+                    if rescue_class != 0:
                         # publish rescue_class
-                        print("Duckiebot {} is in distress: {}".format(idx, rescue_class))
+                        self.log("Duckiebot {} is in distress: {}".format(idx, rescue_class))
                         msg = BoolStamped()
                         msg.data = True
                         self.pub_trigger[idx].publish(msg)
                         self.pub_rescueClassfication[idx].publish(str(rescue_class))
-                        self.id_dict[idx]["in_rescue"] = True
+                        self.id_dict[idx].in_rescue = True
 
                 # self.log("{}".format("Should shop" if y > 0.6 else "Fine"))
 
@@ -145,25 +112,15 @@ class RescueTriggerNode(DTROS):
         # 3. Subscriber: FSM state
         topic_name = "/{}/fsm_node/mode".format("autobot"+veh_id)
         self.sub_fsmStates[veh_id] = rospy.Subscriber("%s"%(topic_name), FSMState, self.cb_fsm, callback_args=veh_id)
-
-
-    def classifier(self, botInfo):
-        #TODO: implement logic
-        # 1: out of lane
-        # 2. stuck
-        #   2.1 crashed into infrastructure
-        #   2.2 crashed into other bot
-        #   2.3 stuck in keep calm mode
+    
+    def classifier(self):
         rescue_class = 0
-        '''if y>0.5:
-            # out of lane
-            # TODO: hard code map
+        trigger_rescue = rospy.get_param('~trigger_rescue')
+        # print(trigger_rescue)
+        if trigger_rescue:
+            print("Class change triggered")
             rescue_class = 1
-        elif self.id_dict[idx]["FSM_state"] =="KEEP_CALM":
-            # duckiebot is stuck
-            rescue_class = 2'''
         return rescue_class
-
 
     # Callback for fsm state
     def cb_fsm(self, msg, veh_name):
@@ -177,21 +134,7 @@ class RescueTriggerNode(DTROS):
         rate = rospy.Rate(4) # 10Hz
 
         while not rospy.is_shutdown():
-            # if self.trigger != self.rescue_on:
-            #     self.rescue_on = self.trigger
-            #     msg = BoolStamped()
-            #     msg.data = self.rescue_on
-            #     # self.log("Sending %s to recovery_mode" % msg.data)
-            #     self.pub_trigger.publish(msg)
-            #
-            # if self.rescue_on:
-            #     car_cmd_msg = Twist2DStamped()
-            #     car_cmd_msg.v = -0.1 if not self.prev_cmd_pub else 0.0
-            #     car_cmd_msg.omega = 0.0
-            #     self.pub_car_cmd.publish(car_cmd_msg)
-            #     self.prev_cmd_pub = not self.prev_cmd_pub
-
-            print("Rescue_node running...")
+            # print("Rescue_node running...")
 
             rate.sleep()
 
