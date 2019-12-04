@@ -102,10 +102,10 @@ class RescueTriggerNode(DTROS):
                     self.veh_list.append(idx)
                     self.id_dict[idx] = AutobotInfo()
                     # TODO: update publisher (trigger) and subscriber (FSM nodes)
-                    '''subprocess.Popen([
+                    subprocess.Popen([
                         "roslaunch", "rescue-center",
-                        "rescue_agent.launch", "bot:=autobot{}".format(idx)
-                    ])'''
+                        "rescue_agent.launch", "botID:={}".format(idx)
+                    ])
                 print(self.veh_list)
                 print(self.id_dict)
                 # Store position from localization system

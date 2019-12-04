@@ -7,14 +7,14 @@ from duckietown_msgs.msg import BoolStamped, Twist2DStamped, FSMState, Pose2DSta
 # from geometry_msgs.msg import TransformStamped, Transform
 from visualization_msgs.msg import Marker, MarkerArray
 
-class RescueManagerNode(DTROS):
+class RescueAgentNode(DTROS):
 
     def __init__(self, node_name):
 
         # initialize DTROS parent class
-        super(RescueManagerNode, self).__init__(node_name=node_name)
+        super(RescueAgentNode, self).__init__(node_name=node_name)
         self.veh_name = rospy.get_param("~distressed_veh") #e.g. autobot27
-        self.veh_id = self.veh_name[-2::] # e.g. 27
+        self.veh_id = int(''.join([x for x in self.veh_name if x.isdigit()])) # e.g. 27
         self.activated = False
         self.distressType = 0 # int
         self.currentPose = Pose2DStamped() # x, y, theta
@@ -24,7 +24,7 @@ class RescueManagerNode(DTROS):
 
 
         # this has to be specified, when launching the node (see below)
-  #       <node pkg="rescue_center" type="rescue_manager_node.py" name="rescue_manager_XY" output="screen">
+  #       <node pkg="rescue_center" type="rescue_agent_node.py" name="rescue_agent_XY" output="screen">
   #             <param name="~distressed_veh" type="string" value="autobot27" />
   #        </node>
 
@@ -105,7 +105,7 @@ class RescueManagerNode(DTROS):
         rate = rospy.Rate(4) # 10Hz
 
         while not rospy.is_shutdown():
-            self.log("Rescue manager running...")
+            self.log("Rescue agent running...")
             if self.activated:
                 self.log("{} in rescue operation")
                 self.calculate_car_cmd()
@@ -121,7 +121,7 @@ class RescueManagerNode(DTROS):
 
 if __name__ == '__main__':
     # create the node
-    node = RescueManagerNode(node_name='rescue_trigger_node')
+    node = RescueAgentNode(node_name='rescue_agent_node')
     # run node
     node.run()
     # keep spinning
