@@ -6,13 +6,13 @@ from std_msgs.msg import String
 from duckietown_msgs.msg import BoolStamped, Twist2DStamped, FSMState, Pose2DStamped
 from visualization_msgs.msg import Marker, MarkerArray
 
+
 class RescueAgentNode(DTROS):
 
     def __init__(self, node_name):
 
         # initialize DTROS parent class
         super(RescueAgentNode, self).__init__(node_name=node_name)
-        #TODO: get BotID
         self.veh_name = rospy.get_param("~distressed_veh") #e.g. autobot27
         self.veh_id = int(''.join([x for x in self.veh_name if x.isdigit()])) # e.g. 27
         # self.veh_id = rospy.get_namespace()
@@ -49,6 +49,7 @@ class RescueAgentNode(DTROS):
             String,
             queue_size=1,
         )
+
 
     # Callback for online localization
     def cb_localization(self, msg):
@@ -101,7 +102,6 @@ class RescueAgentNode(DTROS):
         return False
 
 
-
     def run(self):
 
         # publish rate
@@ -121,6 +121,7 @@ class RescueAgentNode(DTROS):
                     msg = BoolStamped()
                     msg.data = True
                     self.pub_everything_ok.publish(msg)
+
             rate.sleep()
 
 
