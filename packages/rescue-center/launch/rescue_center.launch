@@ -1,10 +1,13 @@
 <launch>
-    <!-- <arg name="veh" default="$(env AUTOBOT_NAME)"/> -->
-    <group ns="Server">
+    <arg name="veh" default="duckietown9"/>
+    <group ns="$(arg veh)">
         <!-- <node pkg="rescue-center" type="lane_recovery_node.py" name="lane_recovery_node" output="screen"/> -->
         <node pkg="rescue-center" type="rescue_node.py" name="rescue_node" output="screen">
           <param name="~trigger_rescue" type="bool" value="false"/>
         </node>
+        
+        <node pkg="rescue_center" type="rescue_manager_node.py" name="rescue_manager_27" output="screen">
+          <param name="~distressed_veh" type="string" value="autobot27" />
+        </node>
     </group>
-
 </launch>
