@@ -4,7 +4,6 @@ import rospy
 from duckietown import DTROS
 from std_msgs.msg import String
 from duckietown_msgs.msg import BoolStamped, Twist2DStamped, FSMState, Pose2DStamped
-# from geometry_msgs.msg import TransformStamped, Transform
 from visualization_msgs.msg import Marker, MarkerArray
 
 class RescueAgentNode(DTROS):
@@ -30,7 +29,7 @@ class RescueAgentNode(DTROS):
         # 1. online localization
         self.sub_markers = rospy.Subscriber(
             "/cslam_markers", MarkerArray, self.cb_localization, queue_size=30)
-        # 2. distress classification from rescue_noe
+        # 2. distress classification from rescue_node
         self.sub_distress_classification = rospy.Subscriber("/{}/distress_classification".format(self.veh_name),
                 String, self.cb_rescue)
 

@@ -3,6 +3,8 @@
         <!-- <node pkg="rescue-center" type="lane_recovery_node.py" name="lane_recovery_node" output="screen"/> -->
         <node pkg="rescue-center" type="rescue_node.py" name="rescue_center" output="screen">
           <param name="~trigger_rescue" type="bool" value="false"/>
+          <param name="~dist_thres" type="double" value="0.5"/>
+          <param name="~avg_window" type="int" value="10"/>
         </node>
     </group>
 </launch>

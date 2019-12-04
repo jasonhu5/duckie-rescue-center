@@ -2,6 +2,8 @@
 import os
 import math
 import rospy
+import numpy as np
+from enum import Enum
 from visualization_msgs.msg import Marker, MarkerArray
 
 
@@ -13,7 +15,6 @@ class AutobotInfo():
         self.filtered = (float('inf'), float('inf'))
         self.heading = None
         self.last_moved = None
-        self.rescue_class = 0
         self.in_rescue = False
 
     def update_from_marker(self, m)
@@ -30,13 +31,22 @@ class AutobotInfo():
 
     def classifier(self, time_diff):
         #TODO: implement logic
-        # 1: out of lane
-        # 2. stuck
-        #   2.1 crashed into infrastructure
-        #   2.2 crashed into other bot
-        #   2.3 stuck in keep calm mode
-        rescue_class = 0
-        if 
+        ''' 
+        1: out of lane
+        2. stuck
+          2.1 crashed into infrastructure
+          2.2 crashed into other bot
+          2.3 stuck for other reasons
+        '''
+        rescue_class = Distress.NORMAL_OPERATION
+        # Check if the duckiebot is moving
+        if self.timestamp - self.last_moved < time_diff:
+            # Duckiebot is moving
+        else:
+            # Duckiebot is standing still
+            
+
+
         '''trigger_rescue = rospy.get_param('~trigger_rescue')
         print(trigger_rescue)
         if trigger_rescue:
@@ -67,3 +77,11 @@ class AutobotInfo():
         xNew, yNew = positionNew
         xAvg, yAvg = positionAvg
         return (a*xNew + (1-a)*xAvg, a*yNew + (1-a)*yAvg)
+
+
+class Distress(Enum):
+    NORMAL_OPERATION = 0
+    OUT_OF_LANE = 1
+    CRASHED_BOT = 2
+    CRASHED_INFRA = 3
+    KEEP_CALM = 4
