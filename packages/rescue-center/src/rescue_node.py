@@ -101,13 +101,11 @@ class RescueTriggerNode(DTROS):
                 if not idx in self.veh_list:
                     self.veh_list.append(idx)
                     self.id_dict[idx] = AutobotInfo()
-                    # TODO: update publisher (trigger) and subscriber (FSM nodes)
+                    self.updateSubscriberPublisher(idx) 
                     subprocess.Popen([
                         "roslaunch", "rescue-center",
                         "rescue_agent.launch", "botID:={}".format(idx)
                     ])
-                print(self.veh_list)
-                print(self.id_dict)
                 # Store position from localization system
                 self.id_dict[idx].position = (m.pose.position.x, m.pose.position.y)
                 print("Deteced bot {} at {}".format(idx, self.id_dict[idx].position))
@@ -116,8 +114,8 @@ class RescueTriggerNode(DTROS):
                 print("Filtered bot {} at {}".format(idx, self.id_dict[idx].filtered))
                 # If duckiebot is not currently in rescue, call classifier
                 if not self.id_dict[idx].in_rescue:
-                    self.classifier(self.id_dict[idx])
-                    rescue_class = self.id_dict[idx].rescue_class
+                    rescue_class = self.classifier(self.id_dict[idx])
+                    self.id_dict[idx].rescue_class = rescue_class
                     if rescue_class > 0:
                         # publish rescue_class
                         print("Duckiebot {} is in distress: {}".format(idx, rescue_class))
@@ -127,13 +125,35 @@ class RescueTriggerNode(DTROS):
                         self.pub_rescueClassfication[idx].publish(str(rescue_class))
                         self.id_dict[idx]["in_rescue"] = True
 
-                # self.trigger = True if y > 0.5 else False
                 # self.log("{}".format("Should shop" if y > 0.6 else "Fine"))
+
+    def updateSubscriberPublisher(self, veh_id):
+        '''Updates Subscriber and Publisher dictionaries, if new duckiebot is added
+        Input: veh_id (str)'''
+        # 1. Publisher: Trigger
+        self.pub_trigger[veh_id] = rospy.Publisher(
+                        "/{}/recovery_mode".format("autobot"+veh_id),
+                        BoolStamped,
+                        queue_size=1
+                    )
+        # 2. Publisher: Distress classification
+        self.pub_rescueClassfication[veh_id] = rospy.Publisher(
+                "~/{}/distress_classification".format("autobot"+veh_id),
+                String,
+                queue_size=1
+        )
+        # 3. Subscriber: FSM state
+        topic_name = "/{}/fsm_node/mode".format("autobot"+veh_id)
+        self.sub_fsmStates[veh_id] = rospy.Subscriber("%s"%(topic_name), FSMState, self.cb_fsm, callback_args=veh_id)
+
 
     def classifier(self, botInfo):
         #TODO: implement logic
         # 1: out of lane
         # 2. stuck
+        #   2.1 crashed into infrastructure
+        #   2.2 crashed into other bot
+        #   2.3 stuck in keep calm mode
         rescue_class = 0
         '''if y>0.5:
             # out of lane

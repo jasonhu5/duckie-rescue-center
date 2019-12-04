@@ -13,20 +13,17 @@ class RescueAgentNode(DTROS):
 
         # initialize DTROS parent class
         super(RescueAgentNode, self).__init__(node_name=node_name)
-        self.veh_name = rospy.get_param("~distressed_veh") #e.g. autobot27
-        self.veh_id = int(''.join([x for x in self.veh_name if x.isdigit()])) # e.g. 27
+        #TODO: get BotID
+        # self.veh_name = rospy.get_param("~distressed_veh") #e.g. autobot27
+        # self.veh_id = int(''.join([x for x in self.veh_name if x.isdigit()])) # e.g. 27
+        self.veh_id = rospy.get_namespace()
+        self.veh_name = "autobot27"+str(self.veh_id)
         self.activated = False
         self.distressType = 0 # int
         self.currentPose = Pose2DStamped() # x, y, theta
         self.current_car_cmd = Twist2DStamped() # v, omega
         self.current_car_cmd.v = 0
         self.current_car_cmd.omega = 0
-
-
-        # this has to be specified, when launching the node (see below)
-  #       <node pkg="rescue_center" type="rescue_agent_node.py" name="rescue_agent_XY" output="screen">
-  #             <param name="~distressed_veh" type="string" value="autobot27" />
-  #        </node>
 
 
         # Subscriber
@@ -47,6 +44,13 @@ class RescueAgentNode(DTROS):
             queue_size=1,
         )
 
+        # for testing
+        self.pub_tst = rospy.Publisher(
+            "/rescue_agents/test",
+            String,
+            queue_size=1,
+        )
+
     # Callback for online localization
     def cb_localization(self, msg):
         '''Saves localization input into self.currentPose'''
@@ -58,7 +62,7 @@ class RescueAgentNode(DTROS):
                 if (idx == self.veh_id):
                     x = m.pose.position.x
                     y = m.pose.position.y
-                    print("Deteced duckiebot {} at position ({}, {})".format(idx, x, y))
+                    self.log("Deteced duckiebot {} at position ({}, {})".format(idx, x, y))
                     self.currentPose.x = x
                     self.currentPose.y = y
                     # TODO: calculate pose from quaternions and save in w
@@ -106,6 +110,8 @@ class RescueAgentNode(DTROS):
 
         while not rospy.is_shutdown():
             self.log("Rescue agent running...")
+            self.pub_tst.publish("Hello from autobot{}".format(self.veh_id)) 
+
             if self.activated:
                 self.log("{} in rescue operation")
                 self.calculate_car_cmd()
