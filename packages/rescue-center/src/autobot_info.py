@@ -29,7 +29,7 @@ class AutobotInfo():
         else:
             self.filtered = self.avg_filter(self.position, self.filtered, 1/window)
 
-    def classifier(self, time_diff):
+    def classifier(self, time_diff, map):
         #TODO: implement logic
         ''' 
         1: out of lane
@@ -44,6 +44,7 @@ class AutobotInfo():
             # Duckiebot is moving
         else:
             # Duckiebot is standing still
+            # Try print(map.position_on_map(self.position)) for debugging
             
 
 
