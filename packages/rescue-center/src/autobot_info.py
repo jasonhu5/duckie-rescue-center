@@ -17,7 +17,7 @@ class AutobotInfo():
         self.last_moved = None
         self.in_rescue = False
 
-    def update_from_marker(self, m)
+    def update_from_marker(self, m):
         self.timestamp = m.header.stamp
         self.position = (m.pose.position.x, m.pose.position.y)
         self.heading = self.quat2angle(m.pose.orientation)
@@ -40,9 +40,9 @@ class AutobotInfo():
         '''
         rescue_class = Distress.NORMAL_OPERATION
         # Check if the duckiebot is moving
-        if self.timestamp - self.last_moved < time_diff:
+        # if self.timestamp - self.last_moved < time_diff:
             # Duckiebot is moving
-        else:
+        # else:
             # Duckiebot is standing still
             # Try print(map.position_on_map(self.position)) for debugging
             

@@ -8,6 +8,7 @@ from duckietown import DTROS
 from std_msgs.msg import String
 from duckietown_msgs.msg import BoolStamped, Twist2DStamped, FSMState
 from visualization_msgs.msg import Marker, MarkerArray
+from simple_map import SimpleMap
 
 
 class RescueTriggerNode(DTROS):
@@ -37,6 +38,16 @@ class RescueTriggerNode(DTROS):
         self.pub_trigger = dict()
         self.pub_rescue_classfication = dict()
         self.sub_fsm_states = dict()
+
+        # build simpleMap
+        # TODO: pull a duckietownworld fork in container
+        map_file_path = os.path.join(
+            "/code/catkin_ws/src",
+            "duckie-rescue-center/packages/rescue-center/src",
+            "test_map.yaml"
+        )
+        self.map = SimpleMap(map_file_path)
+        self.map.display_raw_debug()
 
 
     def updateSubscriberPublisher(self, veh_id):
@@ -91,6 +102,9 @@ class RescueTriggerNode(DTROS):
 
             # Store position from localization system
             self.id_dict[idx].position = (m.pose.position.x, m.pose.position.y)
+
+            onRoad = self.map.position_on_map(self.id_dict[idx].position, subtile=True)
+            print("[{}] ({}) onRoad {}".format(idx, self.id_dict[idx].position, onRoad))
 
             # Filter position and update last_moved time stamp
             self.id_dict[idx].update_filtered(
