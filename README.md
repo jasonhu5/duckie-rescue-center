@@ -17,3 +17,5 @@ For example:
 ```
 docker run --name rescue_center --network=host -it --rm -e ROS_MASTER_IP=http://192.168.1.187:11311 duckietown/duckie-rescue-center:v1-amd64
 ```
+
+For reference: [unicode characters used for map visualization](https://www.compart.com/en/unicode/block/U+2500)
