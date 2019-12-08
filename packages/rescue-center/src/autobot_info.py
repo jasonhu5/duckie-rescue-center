@@ -16,6 +16,8 @@ class AutobotInfo():
         self.heading = None
         self.last_moved = None
         self.in_rescue = False
+        self.onRoad = True
+        self.rescueClass = Distress.NORMAL_OPERATION
 
     def update_from_marker(self, m):
         self.timestamp = m.header.stamp
@@ -23,45 +25,29 @@ class AutobotInfo():
         self.heading = self.quat2angle(m.pose.orientation)
 
     def update_filtered(self, timestamp, threshold, window):
+        # timestamp of type genpy.rostime.Time
         if self.distance(self.position, self.filtered) > threshold:
             self.filtered = self.position
             self.last_moved = timestamp
-        else:
-            self.filtered = self.avg_filter(self.position, self.filtered, 1/window)
+            print("moved")
+        # else:
+        #     self.filtered = self.avg_filter(self.position, self.filtered, 1/window)
 
     def classifier(self, time_diff, map):
-        #TODO: implement logic
-        ''' 
-        1: out of lane
-        2. stuck
-          2.1 crashed into infrastructure
-          2.2 crashed into other bot
-          2.3 stuck for other reasons
-        '''
-        rescue_class = Distress.NORMAL_OPERATION
-        # Check if the duckiebot is moving
-        # if self.timestamp - self.last_moved < time_diff:
-            # Duckiebot is moving
-        # else:
-            # Duckiebot is standing still
-            # Try print(map.position_on_map(self.position)) for debugging
-            
-
-
-        '''trigger_rescue = rospy.get_param('~trigger_rescue')
-        print(trigger_rescue)
-        if trigger_rescue:
-            print("Class change triggered")
-            rescue_class = 1
-        if y>0.5:
-            # out of lane
-            # TODO: hard code map
-            rescue_class = 1
-        elif self.id_dict[idx]["FSM_state"] =="KEEP_CALM":
-            # duckiebot is stuck
-            rescue_class = 2'''
-        return rescue_class
-
+        # only changed, if classfied
+        self.onRoad = map.position_on_map(self.position, subtile=True)
+        # 0. debug mode: change through ros parameter
+        debug_param = rospy.get_param('~trigger_rescue')
+        if debug_param:
+            return Distress.DEBUG
+        elif not self.onRoad:
+            self.rescue_class =  Distress.OUT_OF_LANE
+        # 2. stuck
+        elif time_diff > 20: #TODO: change this parameter
+            self.rescue_class =  Distress.STUCK
+        else:
+            self.rescue_class = Distress.NORMAL_OPERATION
+        return self.rescue_class #TODO: could get rid off return and just call the attribute in rescue_node
     ### HELPER FUNCTIONS
 
     def quat2angle(self, q):
@@ -83,6 +69,9 @@ class AutobotInfo():
 class Distress(Enum):
     NORMAL_OPERATION = 0
     OUT_OF_LANE = 1
-    CRASHED_BOT = 2
-    CRASHED_INFRA = 3
-    KEEP_CALM = 4
+    STUCK = 2
+    DEBUG = 3
+
+    # CRASHED_BOT = 2
+    # CRASHED_INFRA = 3
+    # KEEP_CALM = 4

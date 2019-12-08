@@ -5,6 +5,7 @@ from duckietown import DTROS
 from std_msgs.msg import String
 from duckietown_msgs.msg import BoolStamped, Twist2DStamped, FSMState, Pose2DStamped
 from visualization_msgs.msg import Marker, MarkerArray
+from autobot_info import AutobotInfo, Distress
 
 
 class RescueAgentNode(DTROS):
@@ -71,12 +72,12 @@ class RescueAgentNode(DTROS):
     # Callback for rescue trigger
     def cb_rescue(self, msg):
         '''Activates rescue operation and stops duckiebot'''
-        distress_type = int(msg.data)
-        self.log("Received trigger. Distress Case: {}. Stopping {} now".format(distress_type, self.veh_name))
-        if distress_type > 0:
+        distress_type_num = int(msg.data)
+        self.log("Received trigger. Distress Case: {}. Stopping {} now".format(distress_type_num, self.veh_name))
+        if distress_type_num > 0:
             # this should always be the case, since rescue_node only publishes, if rescue_class >0
             self.activated = True
-            self.distressType = distress_type
+            self.distressType = Distress(distress_type_num)
             # stop duckiebot
             self.current_car_cmd.v = 0
             self.current_car_cmd.omega = 0
@@ -98,8 +99,9 @@ class RescueAgentNode(DTROS):
 
     def finishedRescue(self):
         '''Checks, if the rescue operation has been finished based on current duckiebot pose (similar to classificiation)'''
-        # TODO: implemet actual logic 
-        return False
+        # TODO: implement actual logic 
+        debug_param = rospy.get_param('~everythingOK')
+        return debug_param
 
 
     def run(self):
@@ -112,10 +114,11 @@ class RescueAgentNode(DTROS):
             self.pub_tst.publish("Hello from autobot{}".format(self.veh_id)) 
 
             if self.activated:
-                self.log("{} in rescue operation")
+                self.log("In rescue operation")
                 self.calculate_car_cmd()
                 self.pub_car_cmd.publish(self.current_car_cmd)
                 if self.finishedRescue():
+                    self.log("Finished Rescue")
                     self.activated = False
                     self.distressType = 0
                     msg = BoolStamped()

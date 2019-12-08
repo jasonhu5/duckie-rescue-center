@@ -9,6 +9,7 @@ from std_msgs.msg import String
 from duckietown_msgs.msg import BoolStamped, Twist2DStamped, FSMState
 from visualization_msgs.msg import Marker, MarkerArray
 from simple_map import SimpleMap
+from autobot_info import AutobotInfo, Distress
 
 
 class RescueTriggerNode(DTROS):
@@ -25,9 +26,9 @@ class RescueTriggerNode(DTROS):
 
         ## parameters
         # threshold distance to consider bot not moving
-        self.parameters['~dist_thres'] = None
+        self.parameters['~dist_thres'] = 0.01 # TODO: tune parameter
         # number of windows to use for filtering
-        self.parameters['~avg_window'] = None
+        self.parameters['~avg_window'] = 10 # TODO. tune parameter
         self.updateParameters()
 
         # Subscribe to topics online localization
@@ -38,6 +39,7 @@ class RescueTriggerNode(DTROS):
         self.pub_trigger = dict()
         self.pub_rescue_classfication = dict()
         self.sub_fsm_states = dict()
+        self.sub_everythingOk = dict()
 
         # build simpleMap
         # TODO: pull a duckietownworld fork in container
@@ -48,6 +50,9 @@ class RescueTriggerNode(DTROS):
         )
         self.map = SimpleMap(map_file_path)
         self.map.display_raw_debug()
+
+        #save current time:
+        self.currentTime = None
 
 
     def updateSubscriberPublisher(self, veh_id):
@@ -75,7 +80,19 @@ class RescueTriggerNode(DTROS):
             self.cbFSM,
             callback_args=veh_id
         )
+        # 4. Subscriber: EverythingOK from Rescue_agend
+        self.sub_everythingOk[veh_id] = rospy.Subscriber(
+            "/rescue/rescue_agents/autobot{}/rescueDone".format(veh_id),
+            BoolStamped,
+            self.cbEverythingOk,
+            callback_args=veh_id
+        )
     
+    def cbEverythingOk(self, msg, veh_id):
+        if msg.data == True:
+            self.id_dict[veh_id].in_rescue = False
+            self.id_dict[veh_id].last_moved = self.currentTime
+
 
     def cbLocalization(self, msg):
         """
@@ -103,22 +120,25 @@ class RescueTriggerNode(DTROS):
             # Store position from localization system
             self.id_dict[idx].position = (m.pose.position.x, m.pose.position.y)
 
-            onRoad = self.map.position_on_map(self.id_dict[idx].position, subtile=True)
-            print("[{}] ({}) onRoad {}".format(idx, self.id_dict[idx].position, onRoad))
-
             # Filter position and update last_moved time stamp
             self.id_dict[idx].update_filtered(
                 m.header.stamp,
                 self.parameters['~dist_thres'],
                 self.parameters['~avg_window'],
             )
-
+            
             if self.id_dict[idx].in_rescue:
                 continue
             # If duckiebot is not currently in rescue, check classifier
-            time_diff = 0.0
-            rescue_class = self.id_dict[idx].classifier(time_diff)
-            if rescue_class != 0:
+            self.currentTime = m.header.stamp
+            time_diff = self.currentTime.to_sec()-self.id_dict[idx].last_moved.to_sec()
+
+            rescue_class = self.id_dict[idx].classifier(time_diff, self.map)
+            if idx == 27:
+                print("[{}]: time diff[s]: {}".format(idx, time_diff))
+                print("[{}] ({}) onRoad {}".format(idx, self.id_dict[idx].position, self.id_dict[idx].onRoad))
+
+            if rescue_class.value != 0:
                 # publish rescue_class
                 self.log(
                     "Duckiebot [{}] in distress <{}>".format(idx, rescue_class))
@@ -127,7 +147,7 @@ class RescueTriggerNode(DTROS):
                 # turn duckiebot into rescue mode
                 self.pub_trigger[idx].publish(msg)
                 # notify rescue agent of the classification result
-                self.pub_rescue_classfication[idx].publish(str(rescue_class))
+                self.pub_rescue_classfication[idx].publish(str(rescue_class.value))
                 # note down so can skip the next time
                 self.id_dict[idx].in_rescue = True
 
@@ -149,20 +169,20 @@ class RescueTriggerNode(DTROS):
     #         rate.sleep()
 
 
-class AutobotInfo():
-    def __init__(self):
-        self.fsm_state = None
-        self.position = (None, None)
-        self.filtered = (float('inf'), float('inf'))
-        self.last_moved = None
-        self.heading = None
-        self.in_rescue = False
+# class AutobotInfo():
+#     def __init__(self):
+#         self.fsm_state = None
+#         self.position = (None, None)
+#         self.filtered = (float('inf'), float('inf'))
+#         self.last_moved = None
+#         self.heading = None
+#         self.in_rescue = False
 
-    def update_filtered(self, timestamp, threshold, window):
-        pass
+#     def update_filtered(self, timestamp, threshold, window):
+#         pass
 
-    def classifier(self, time_diff):
-        return 1 if rospy.get_param('~trigger_rescue') else 0
+#     def classifier(self, time_diff):
+#         return 1 if rospy.get_param('~trigger_rescue') else 0
 
 
 if __name__ == '__main__':
