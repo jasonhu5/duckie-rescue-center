@@ -18,6 +18,11 @@ class AutobotInfo():
         self.in_rescue = False
         self.onRoad = True
         self.rescueClass = Distress.NORMAL_OPERATION
+        self.path = list()
+
+    def updatePath(self, path):
+        #TODO: implement
+        return 0
 
     def update_from_marker(self, m):
         self.timestamp = m.header.stamp

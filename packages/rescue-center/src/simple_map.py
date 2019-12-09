@@ -152,6 +152,11 @@ class SimpleMap():
                 print("Passed wrong map as arg, need bin"); return
             return map[tile_x, tile_y]
 
+    def pos_to_ideal_heading(self, position):
+        # TODO: import from Carl
+        return 0
+    
+    
 
     ''' ERROR HANDLING '''
     def try_orientation(self, o):

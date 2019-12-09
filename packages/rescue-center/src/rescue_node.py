@@ -10,6 +10,7 @@ from duckietown_msgs.msg import BoolStamped, Twist2DStamped, FSMState
 from visualization_msgs.msg import Marker, MarkerArray
 from simple_map import SimpleMap
 from autobot_info import AutobotInfo, Distress
+from nav_msgs.msg import Path
 
 
 class RescueTriggerNode(DTROS):
@@ -34,12 +35,15 @@ class RescueTriggerNode(DTROS):
         # Subscribe to topics online localization
         self.sub_markers = rospy.Subscriber(
             "/cslam_markers", MarkerArray, self.cbLocalization, queue_size=30)
+        # for path
+
 
         # Prepare for bot-wise topics
         self.pub_trigger = dict()
         self.pub_rescue_classfication = dict()
         self.sub_fsm_states = dict()
         self.sub_everythingOk = dict()
+        self.sub_path = dict()
 
         # build simpleMap
         # TODO: pull a duckietownworld fork in container
@@ -87,6 +91,13 @@ class RescueTriggerNode(DTROS):
             self.cbEverythingOk,
             callback_args=veh_id
         )
+        #5. Subscriber: Path
+        self.sub_path[veh_id] = rospy.Subscriber(
+            "/movable_path_autobot{}".format(veh_id), Path, self.cbPath, callback_args=veh_id, queue_size=30)
+
+
+    def cbPath(self, msg, veh_id):
+        self.id_dict[veh_id].updatePath(msg)
     
     def cbEverythingOk(self, msg, veh_id):
         if msg.data == True:
@@ -121,6 +132,7 @@ class RescueTriggerNode(DTROS):
                 ])
 
             # Store position from localization system
+            # TODO: use updateFromMarker from autobotInfo()
             self.id_dict[idx].position = (m.pose.position.x, m.pose.position.y)
 
             # Filter position and update last_moved time stamp
