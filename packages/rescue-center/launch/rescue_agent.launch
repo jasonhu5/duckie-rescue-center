@@ -3,6 +3,7 @@
     <group ns="rescue_agents">
         <node pkg="rescue-center" type="rescue_agent_node.py" name="rescue_agent_$(arg botID)" output="screen">
           <param name="~distressed_veh" type="string" value="autobot$(arg botID)" />
+          <param name="~everythingOK" type="bool" value="false" />
         </node>
     </group>
 </launch>   

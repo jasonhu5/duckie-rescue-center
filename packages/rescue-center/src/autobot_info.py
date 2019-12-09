@@ -37,7 +37,7 @@ class AutobotInfo():
         # only changed, if classfied
         self.onRoad = map.position_on_map(self.position, subtile=True)
         # 0. debug mode: change through ros parameter
-        debug_param = rospy.get_param('~trigger_rescue')
+        debug_param = rospy.get_param('~trigger_rescue') # TODO: one for each autobot
         if debug_param:
             return Distress.DEBUG
         elif not self.onRoad:

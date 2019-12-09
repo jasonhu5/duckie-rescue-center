@@ -92,6 +92,9 @@ class RescueTriggerNode(DTROS):
         if msg.data == True:
             self.id_dict[veh_id].in_rescue = False
             self.id_dict[veh_id].last_moved = self.currentTime
+            msg = BoolStamped()
+            msg.data = False
+            self.pub_trigger[veh_id].publish(msg)
 
 
     def cbLocalization(self, msg):

@@ -16,11 +16,12 @@ class RescueAgentNode(DTROS):
         super(RescueAgentNode, self).__init__(node_name=node_name)
         self.veh_name = rospy.get_param("~distressed_veh") #e.g. autobot27
         self.veh_id = int(''.join([x for x in self.veh_name if x.isdigit()])) # e.g. 27
-        # self.veh_id = rospy.get_namespace()
-        # self.veh_name = "autobot27"+str(self.veh_id)
         self.activated = False
-        self.distressType = 0 # int
-        self.currentPose = Pose2DStamped() # x, y, theta
+
+        self.autobot_info = AutobotInfo()
+
+        # self.distressType = 0 # int
+        # self.currentPose = Pose2DStamped() # x, y, theta
         self.current_car_cmd = Twist2DStamped() # v, omega
         self.current_car_cmd.v = 0
         self.current_car_cmd.omega = 0
@@ -56,17 +57,19 @@ class RescueAgentNode(DTROS):
     def cb_localization(self, msg):
         '''Saves localization input into self.currentPose'''
         # self.log("Received cslam message")
-        markers = msg.markers
-        for m in markers:
-            if m.ns == "duckiebots":
-                idx = str(m.id)
-                if (idx == self.veh_id):
-                    x = m.pose.position.x
-                    y = m.pose.position.y
-                    # self.log("Deteced duckiebot {} at position ({}, {})".format(idx, x, y))
-                    self.currentPose.x = x
-                    self.currentPose.y = y
-                    # TODO: calculate pose from quaternions and save in w
+        if self.activated:
+            markers = msg.markers
+            for m in markers:
+                if m.ns == "duckiebots":
+                    idx = str(m.id)
+                    if (idx == self.veh_id):
+                        self.autobot_info.position = (m.pose.position.x, m.pose.position.y)
+                        self.autobot_info.update_filtered(
+                            m.header.stamp,
+                            0.01,
+                            10,
+                        ) #TODO: with parameters
+                        # TODO: calculate pose from quaternions and save in w
                     
 
     # Callback for rescue trigger
@@ -77,7 +80,7 @@ class RescueAgentNode(DTROS):
         if distress_type_num > 0:
             # this should always be the case, since rescue_node only publishes, if rescue_class >0
             self.activated = True
-            self.distressType = Distress(distress_type_num)
+            self.autobot_info.rescue_class = Distress(distress_type_num)
             # stop duckiebot
             self.current_car_cmd.v = 0
             self.current_car_cmd.omega = 0
@@ -87,19 +90,19 @@ class RescueAgentNode(DTROS):
     def calculate_car_cmd(self):
         '''Calculates car_cmd based on distress_type and current duckiebot pose'''
         # TODO: implement actual logic
-        if self.distressType == 1:
+        if self.autobot_info.rescue_class == Distress.OUT_OF_LANE:
             # out of lane
             self.current_car_cmd.v = 0
             self.current_car_cmd.omega = 0
-        elif self.distressType == 2:
+        elif self.autobot_info.rescue_class == Distress.STUCK:
             # stuck
             self.current_car_cmd.v = 0
-            self.current_car_cmd.omega = 0 
+            self.current_car_cmd.omega = 10
     
 
     def finishedRescue(self):
         '''Checks, if the rescue operation has been finished based on current duckiebot pose (similar to classificiation)'''
-        # TODO: implement actual logic 
+        # TODO: implement actual logic, this will be a different classifier
         debug_param = rospy.get_param('~everythingOK')
         return debug_param
 
@@ -120,10 +123,11 @@ class RescueAgentNode(DTROS):
                 if self.finishedRescue():
                     self.log("Finished Rescue")
                     self.activated = False
-                    self.distressType = 0
+                    self.autobot_info.rescue_class = Distress.NORMAL_OPERATION
                     msg = BoolStamped()
                     msg.data = True
                     self.pub_everything_ok.publish(msg)
+                    rospy.set_param('~everythingOK', 'false')
 
             rate.sleep()
 
