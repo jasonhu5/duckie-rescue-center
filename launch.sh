@@ -1,4 +1,4 @@
 #!/bin/bash
 
 set -e
-roslaunch rescue-center rescue_center.launch 
+roslaunch rescue_center rescue_center.launch 

@@ -18,7 +18,7 @@ class AutobotInfo():
         self.in_rescue = False
         self.onRoad = True
         self.rescueClass = Distress.NORMAL_OPERATION
-        self.path = list()
+        self.path = list() #TODO: maybe dict: sample with 
 
     def updatePath(self, path):
         #TODO: implement
@@ -48,17 +48,17 @@ class AutobotInfo():
         elif not self.onRoad:
             self.rescue_class =  Distress.OUT_OF_LANE
         # 2. stuck
-        elif time_diff > 20: #TODO: change this parameter
+        elif time_diff > 1000: #TODO: change this parameter
             self.rescue_class =  Distress.STUCK
         else:
             self.rescue_class = Distress.NORMAL_OPERATION
-        return self.rescue_class #TODO: could get rid off return and just call the attribute in rescue_node
+        return self.rescue_class #TODO: could get rid off return and just call the attribute in rescue_center_node
     ### HELPER FUNCTIONS
 
     def quat2angle(self, q):
         siny_cosp = 2 * (q.w*q.z + q.x*q.y)
         cosy_cosp = 1 - 2 * (q.y*q.y + q.z*q.z)
-        return math.atan2(siny_cosp, cosy_cosp)
+        return (180.0/math.pi * math.atan2(siny_cosp, cosy_cosp))
 
     def distance(self, positionA, positionB):
         xA, yA = positionA

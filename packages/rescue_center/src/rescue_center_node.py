@@ -11,6 +11,8 @@ from visualization_msgs.msg import Marker, MarkerArray
 from simple_map import SimpleMap
 from autobot_info import AutobotInfo, Distress
 from nav_msgs.msg import Path
+from rescue_center.msg import AutobotInfoMsg
+# 11 
 
 
 class RescueTriggerNode(DTROS):
@@ -49,7 +51,7 @@ class RescueTriggerNode(DTROS):
         # TODO: pull a duckietownworld fork in container
         map_file_path = os.path.join(
             "/code/catkin_ws/src",
-            "duckie-rescue-center/packages/rescue-center/src",
+            "duckie-rescue-center/packages/rescue_center/src",
             "test_map.yaml"
         )
         self.map = SimpleMap(map_file_path)
@@ -95,6 +97,14 @@ class RescueTriggerNode(DTROS):
         self.sub_path[veh_id] = rospy.Subscriber(
             "/movable_path_autobot{}".format(veh_id), Path, self.cbPath, callback_args=veh_id, queue_size=30)
 
+        # test
+        self.pub_autobot_info = rospy.Publisher(
+            "/autobot{}/autobot_info".format(veh_id),
+            AutobotInfoMsg,
+            queue_size=5,
+        )
+
+
 
     def cbPath(self, msg, veh_id):
         self.id_dict[veh_id].updatePath(msg)
@@ -106,6 +116,29 @@ class RescueTriggerNode(DTROS):
             msg = BoolStamped()
             msg.data = False
             self.pub_trigger[veh_id].publish(msg)
+
+
+    def autobotInfo2Msg(self, info):
+        msg = AutobotInfoMsg()
+        if info.timestamp:
+            msg.timestamp = info.timestamp
+        if info.fsm_state:
+            msg.fsm_state = info.fsm_state
+        if info.position:
+            msg.position = [info.position[0], info.position[1]]
+        if info.filtered:
+            msg.filtered = [info.filtered[0], info.filtered[1]]
+        # msg.heading = 
+        if info.last_moved:
+            msg.last_moved = info.last_moved
+        if info.in_rescue:
+            msg.in_rescue = info.in_rescue
+        if info.onRoad:
+            msg.onRoad = info.onRoad
+        if info.rescueClass:
+            msg.rescueClass = info.rescueClass.value
+        # msg.path =  
+        return msg
 
 
     def cbLocalization(self, msg):
@@ -127,13 +160,15 @@ class RescueTriggerNode(DTROS):
                 self.updateSubscriberPublisher(idx) 
                 # create rescue agent for this bot
                 subprocess.Popen([
-                    "roslaunch", "rescue-center",
+                    "roslaunch", "rescue_center",
                     "rescue_agent.launch", "botID:={}".format(idx)
                 ])
 
             # Store position from localization system
             # TODO: use updateFromMarker from autobotInfo()
-            self.id_dict[idx].position = (m.pose.position.x, m.pose.position.y)
+            # self.id_dict[idx].position = (m.pose.position.x, m.pose.position.y)
+            self.id_dict[idx].update_from_marker(m)
+            print("[{}] heading: {}".format(idx, self.id_dict[idx].heading))
 
             # Filter position and update last_moved time stamp
             self.id_dict[idx].update_filtered(
@@ -165,6 +200,8 @@ class RescueTriggerNode(DTROS):
                 self.pub_rescue_classfication[idx].publish(str(rescue_class.value))
                 # note down so can skip the next time
                 self.id_dict[idx].in_rescue = True
+
+            self.pub_autobot_info.publish(self.autobotInfo2Msg(self.id_dict[idx]))
 
 
     # Callback for fsm state

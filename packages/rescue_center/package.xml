@@ -1,5 +1,5 @@
 <package>
-  <name>rescue-center</name>
+  <name>rescue_center</name>
   <version>0.1.0</version>
   <description>
   This package is the rescue module.
@@ -10,4 +10,6 @@
   <license>None</license>
 
   <buildtool_depend>catkin</buildtool_depend>
+  <build_depend>message_generation</build_depend>
+  <run_depend>message_runtime</run_depend>
 </package>
