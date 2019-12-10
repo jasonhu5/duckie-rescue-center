@@ -48,7 +48,7 @@ class AutobotInfo():
         elif not self.onRoad:
             self.rescue_class =  Distress.OUT_OF_LANE
         # 2. stuck
-        elif time_diff > 20: #TODO: change this parameter
+        elif time_diff > 10: #TODO: change this parameter
             self.rescue_class =  Distress.STUCK
         else:
             self.rescue_class = Distress.NORMAL_OPERATION
