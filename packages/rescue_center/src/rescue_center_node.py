@@ -135,8 +135,8 @@ class RescueTriggerNode(DTROS):
             msg.in_rescue = info.in_rescue
         if info.onRoad:
             msg.onRoad = info.onRoad
-        if info.rescueClass:
-            msg.rescueClass = info.rescueClass.value
+        if info.rescue_class:
+            msg.rescue_class = info.rescue_class.value 
         # msg.path =  
         return msg
 
@@ -165,10 +165,11 @@ class RescueTriggerNode(DTROS):
                 ])
 
             # Store position from localization system
-            # TODO: use updateFromMarker from autobotInfo()
-            # self.id_dict[idx].position = (m.pose.position.x, m.pose.position.y)
             self.id_dict[idx].update_from_marker(m)
             print("[{}] heading: {}".format(idx, self.id_dict[idx].heading))
+            # publish autobot_info to rescue_agent
+            self.pub_autobot_info.publish(self.autobotInfo2Msg(self.id_dict[idx]))
+
 
             # Filter position and update last_moved time stamp
             self.id_dict[idx].update_filtered(
@@ -201,8 +202,6 @@ class RescueTriggerNode(DTROS):
                 # note down so can skip the next time
                 self.id_dict[idx].in_rescue = True
 
-            self.pub_autobot_info.publish(self.autobotInfo2Msg(self.id_dict[idx]))
-
 
     # Callback for fsm state
     def cbFSM(self, msg, veh_id):
@@ -212,29 +211,6 @@ class RescueTriggerNode(DTROS):
         if veh_id in self.id_dict:
             self.log("Duckiebot [{}] FSM state <{}>".format(veh_id, msg.state))
             self.id_dict[veh_id].fsm_state = msg.state
-
-
-    # def run(self):
-    #     # publish rate
-    #     rate = rospy.Rate(4) # 10Hz
-    #     while not rospy.is_shutdown():
-    #         rate.sleep()
-
-
-# class AutobotInfo():
-#     def __init__(self):
-#         self.fsm_state = None
-#         self.position = (None, None)
-#         self.filtered = (float('inf'), float('inf'))
-#         self.last_moved = None
-#         self.heading = None
-#         self.in_rescue = False
-
-#     def update_filtered(self, timestamp, threshold, window):
-#         pass
-
-#     def classifier(self, time_diff):
-#         return 1 if rospy.get_param('~trigger_rescue') else 0
 
 
 if __name__ == '__main__':

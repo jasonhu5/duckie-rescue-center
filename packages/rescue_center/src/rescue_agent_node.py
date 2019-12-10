@@ -31,8 +31,8 @@ class RescueAgentNode(DTROS):
 
         # Subscriber
         # 1. online localization
-        self.sub_markers = rospy.Subscriber(
-            "/cslam_markers", MarkerArray, self.cb_localization, queue_size=30)
+        # self.sub_markers = rospy.Subscriber(
+        #     "/cslam_markers", MarkerArray, self.cb_localization, queue_size=30)
         # 2. distress classification from rescue_center_node
         self.sub_distress_classification = rospy.Subscriber("/{}/distress_classification".format(self.veh_name),
                 String, self.cb_rescue)
@@ -60,38 +60,36 @@ class RescueAgentNode(DTROS):
     def cb_autobot_info(self, msg):
         self.pub_tst.publish("Got info for {}".format(self.veh_name))
         # self.pub_info.publish()
-        info = AutobotInfo()
-        info.timestamp = msg.timestamp
-        info.fsm_state = msg.fsm_state
-        info.position = (msg.position[0], msg.position[1])
-        info.filtered = (msg.filtered[0], msg.filtered[1])
+        self.autobot_info.timestamp = msg.timestamp
+        self.autobot_info.fsm_state = msg.fsm_state
+        self.autobot_info.position = (msg.position[0], msg.position[1])
+        self.autobot_info.filtered = (msg.filtered[0], msg.filtered[1])
         # msg.heading = 
-        info.last_moved = msg.last_moved
-        info.in_rescue = msg.in_rescue
-        info.onRoad = msg.onRoad
-        info.rescueClass = msg.rescueClass
+        self.autobot_info.last_moved = msg.last_moved
+        self.autobot_info.in_rescue = msg.in_rescue
+        self.autobot_info.onRoad = msg.onRoad
         # msg.path =  
         # print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
         # print(vars(info))
         # print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
 
     # Callback for online localization
-    def cb_localization(self, msg):
-        '''Saves localization input into self.currentPose'''
-        # self.log("Received cslam message")
-        if self.activated:
-            markers = msg.markers
-            for m in markers:
-                if m.ns == "duckiebots":
-                    idx = str(m.id)
-                    if (idx == self.veh_id):
-                        self.autobot_info.position = (m.pose.position.x, m.pose.position.y)
-                        self.autobot_info.update_filtered(
-                            m.header.stamp,
-                            0.01,
-                            10,
-                        ) #TODO: with parameters
-                        # TODO: calculate pose from quaternions and save in w
+    # def cb_localization(self, msg):
+    #     '''Saves localization input into self.currentPose'''
+    #     # self.log("Received cslam message")
+    #     if self.activated:
+    #         markers = msg.markers
+    #         for m in markers:
+    #             if m.ns == "duckiebots":
+    #                 idx = str(m.id)
+    #                 if (idx == self.veh_id):
+    #                     self.autobot_info.update_from_marker(m)
+    #                     self.autobot_info.update_filtered(
+    #                         m.header.stamp,
+    #                         0.01,
+    #                         10,
+    #                     ) #TODO: with parameters
+    #                     # TODO: calculate pose from quaternions and save in w
                     
 
     # Callback for rescue trigger
@@ -119,7 +117,7 @@ class RescueAgentNode(DTROS):
         elif self.autobot_info.rescue_class == Distress.STUCK:
             # stuck
             self.current_car_cmd.v = 0
-            self.current_car_cmd.omega = 10
+            self.current_car_cmd.omega = 0
     
 
     def finishedRescue(self):

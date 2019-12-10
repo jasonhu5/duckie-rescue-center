@@ -17,7 +17,7 @@ class AutobotInfo():
         self.last_moved = None
         self.in_rescue = False
         self.onRoad = True
-        self.rescueClass = Distress.NORMAL_OPERATION
+        self.rescue_class = Distress.NORMAL_OPERATION
         self.path = list() #TODO: maybe dict: sample with 
 
     def updatePath(self, path):
@@ -48,7 +48,7 @@ class AutobotInfo():
         elif not self.onRoad:
             self.rescue_class =  Distress.OUT_OF_LANE
         # 2. stuck
-        elif time_diff > 1000: #TODO: change this parameter
+        elif time_diff > 20: #TODO: change this parameter
             self.rescue_class =  Distress.STUCK
         else:
             self.rescue_class = Distress.NORMAL_OPERATION

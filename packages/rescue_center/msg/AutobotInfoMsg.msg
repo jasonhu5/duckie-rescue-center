@@ -7,5 +7,5 @@ float64[2] filtered
 time last_moved
 bool in_rescue
 bool onRoad
-int8 rescueClass
+int8 rescue_class
 # path = list() 
