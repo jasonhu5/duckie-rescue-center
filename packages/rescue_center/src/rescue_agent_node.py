@@ -40,6 +40,9 @@ class RescueAgentNode(DTROS):
         self.map = SimpleMap(map_file_path)
 
 
+        self.finished_execution = False
+
+
         # Subscriber
         # 1. online localization
         # self.sub_markers = rospy.Subscriber(
@@ -156,6 +159,9 @@ class RescueAgentNode(DTROS):
         debug_param = rospy.get_param('~everythingOK')
         if debug_param:
             return True
+        # For debugging
+        if self.finished_execution:
+            return True
         # if self.goodHeading():
         #     return True
         return False
@@ -187,10 +193,10 @@ class RescueAgentNode(DTROS):
                 if self.car_cmd_array:
                     self.current_car_cmd = self.car_cmd_array.pop(0)
                     self.pub_car_cmd.publish(self.current_car_cmd)
-                else:
-                    rospy.set_param('~everythingOK', 'true')
-                    debug_param = rospy.get_param('~everythingOK')
-                    print(debug_param)
+                    self.finished_execution = False
+                    if not self.car_cmd_array:
+                        # just popped out last one
+                        self.finished_execution = True
 
                 if self.finishedRescue():
                     self.log("Finished Rescue")
@@ -199,7 +205,7 @@ class RescueAgentNode(DTROS):
                     msg = BoolStamped()
                     msg.data = True
                     self.pub_everything_ok.publish(msg)
-                    rospy.set_param('~everythingOK', 'false')
+                    # rospy.set_param('~everythingOK', 'false')
 
             rate.sleep()
 
