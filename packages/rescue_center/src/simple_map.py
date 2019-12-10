@@ -152,6 +152,10 @@ class SimpleMap():
                 print("Passed wrong map as arg, need bin"); return
             return map[tile_x, tile_y]
 
+    def  inTheMiddleOfTheRoad(self, position):
+        '''Checks, if I am in te middle of the road '''
+        return False
+
     def pos_to_ideal_heading(self, position):
         # TODO: import from Carl
         return 0

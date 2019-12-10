@@ -3,7 +3,7 @@ time timestamp
 string fsm_state
 float64[2] position
 float64[2] filtered
-# heading = None
+float64 heading
 time last_moved
 bool in_rescue
 bool onRoad

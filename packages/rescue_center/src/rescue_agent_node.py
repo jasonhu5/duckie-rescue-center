@@ -7,6 +7,7 @@ from duckietown_msgs.msg import BoolStamped, Twist2DStamped, FSMState, Pose2DSta
 from visualization_msgs.msg import Marker, MarkerArray
 from autobot_info import AutobotInfo, Distress
 from rescue_center.msg import AutobotInfoMsg
+from simple_map import SimpleMap
 
 # 11 
 
@@ -27,6 +28,16 @@ class RescueAgentNode(DTROS):
         self.current_car_cmd = Twist2DStamped() # v, omega
         self.current_car_cmd.v = 0
         self.current_car_cmd.omega = 0
+
+        self.car_cmd_array = list()
+
+        # build map
+        map_file_path = os.path.join(
+            "/code/catkin_ws/src",
+            "duckie-rescue-center/packages/rescue_center/src",
+            "test_map.yaml"
+        )
+        self.map = SimpleMap(map_file_path)
 
 
         # Subscriber
@@ -105,6 +116,8 @@ class RescueAgentNode(DTROS):
             self.current_car_cmd.v = 0
             self.current_car_cmd.omega = 0
             self.pub_car_cmd.publish(self.current_car_cmd)
+            # calculate_car_cmd
+            self.calculate_car_cmd()
 
     
     def calculate_car_cmd(self):
@@ -118,13 +131,45 @@ class RescueAgentNode(DTROS):
             # stuck
             self.current_car_cmd.v = 0
             self.current_car_cmd.omega = 0
+            if self.stuckedRight():
+                for i in range(3):
+                    cmd = Twist2DStamped()
+                    cmd.v = -0.5
+                    cmd.omega = 0
+                    self.car_cmd_array.append(cmd) 
+                for i in range(3):
+                    cmd = Twist2DStamped()
+                    cmd.v = 0
+                    cmd.omega = 0.8
+                    self.car_cmd_array.append(cmd) 
+            print(self.car_cmd_array)
     
+    def stuckedRight(self):
+       '''checks, if duckiebot is stuck left or right'''
+       # TODO: implement classifier her
+       return True
+      
 
     def finishedRescue(self):
         '''Checks, if the rescue operation has been finished based on current duckiebot pose (similar to classificiation)'''
         # TODO: implement actual logic, this will be a different classifier
         debug_param = rospy.get_param('~everythingOK')
-        return debug_param
+        if debug_param:
+            return True
+        # if self.goodHeading():
+        #     return True
+        return False
+    def goodHeading(self):
+        # TODO: implement logic: hard coded now
+        if abs(abs(self.autobot_info.heading) - 180) < 20:
+            return True
+
+    def stopDuckiebot(self):
+        car_cmd = Twist2DStamped()
+        car_cmd.v = 0
+        car_cmd.omega = 0
+        self.current_car_cmd = car_cmd
+        self.pub_car_cmd.publish(self.current_car_cmd)
 
 
     def run(self):
@@ -138,8 +183,15 @@ class RescueAgentNode(DTROS):
 
             if self.activated:
                 self.log("In rescue operation")
-                self.calculate_car_cmd()
-                self.pub_car_cmd.publish(self.current_car_cmd)
+                # self.calculate_car_cmd()
+                if self.car_cmd_array:
+                    self.current_car_cmd = self.car_cmd_array.pop(0)
+                    self.pub_car_cmd.publish(self.current_car_cmd)
+                else:
+                    rospy.set_param('~everythingOK', 'true')
+                    debug_param = rospy.get_param('~everythingOK')
+                    print(debug_param)
+
                 if self.finishedRescue():
                     self.log("Finished Rescue")
                     self.activated = False

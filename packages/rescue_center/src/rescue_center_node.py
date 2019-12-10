@@ -137,6 +137,8 @@ class RescueTriggerNode(DTROS):
             msg.onRoad = info.onRoad
         if info.rescue_class:
             msg.rescue_class = info.rescue_class.value 
+        if info.heading:
+            msg.heading = info.heading
         # msg.path =  
         return msg
 
