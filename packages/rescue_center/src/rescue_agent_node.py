@@ -8,6 +8,7 @@ from visualization_msgs.msg import Marker, MarkerArray
 from autobot_info import AutobotInfo, Distress
 from rescue_center.msg import AutobotInfoMsg
 from simple_map import SimpleMap
+import math
 
 # 11 
 
@@ -127,17 +128,49 @@ class RescueAgentNode(DTROS):
         elif self.autobot_info.rescue_class == Distress.STUCK:
             # stuck
             if self.stuckedRight():
-                for i in range(3):
-                    cmd = Twist2DStamped()
-                    cmd.v = -0.5
-                    cmd.omega = 0
-                    self.car_cmd_array.append(cmd) 
-                for i in range(3):
-                    cmd = Twist2DStamped()
-                    cmd.v = 0
-                    cmd.omega = 0.8
-                    self.car_cmd_array.append(cmd) 
-        print(self.car_cmd_array)
+                self.moveBack_cmDistance(10, smoothCmd=True) #add cmds to array
+                # for i in range(3):
+                #     cmd = Twist2DStamped()
+                #     cmd.v = -0.5
+                #     cmd.omega = 0
+                #     self.car_cmd_array.append(cmd) 
+                # for i in range(3):
+                #     cmd = Twist2DStamped()
+                #     cmd.v = 0
+                #     cmd.omega = 0.8
+                #     self.car_cmd_array.append(cmd) 
+            #TODO: stuckedLeft()
+        # print(self.car_cmd_array)
+
+    def moveBack_cmDistance(self, distance_inCM, smoothCmd = False, debug = False):
+        '''adds cmds to self.car_cmd_array to move back quarterTile = 58.5cm/4 ~ 14 cm'''
+        cmd_move = Twist2DStamped()
+        if debug:
+            cmd_move.v = rospy.get_param('~velocity_backwards')
+        else:
+            cmd_move.v = -0.1
+        cmd_move.omega = 0
+
+        if not smoothCmd:
+            cmd_pause = Twist2DStamped()
+            cmd_pause.v = 0.0
+            cmd_pause.omega = 0.0        
+            #this moves 2cm
+            cmd_package = list()
+            cmd_package.append(cmd_move)
+            for i in range(5):
+                # TODO: make code nicer
+                cmd_package.append(cmd_pause)
+        else:
+            # TODO: for smooth cmd: 20 percent bigger distance than withou
+            cmd_package = [cmd_move]
+        
+        if distance_inCM < 2:
+            self.log("[Error in moveBack_cmDistance]: autobot must move more than 2cm")
+        else:
+            num_packages = int(math.floor(distance_inCM/2))
+        for i in range(num_packages):
+            self.car_cmd_array = self.car_cmd_array + cmd_package
     
     def stuckedRight(self):
        '''checks, if duckiebot is stuck left or right'''
@@ -151,13 +184,10 @@ class RescueAgentNode(DTROS):
         debug_param = rospy.get_param('~everythingOK')
         if debug_param:
             return True
-        # For debugging
-        if self.finished_execution:
-            return True
         # if self.goodHeading():
         #     return True
         return False
-        
+
     def goodHeading(self):
         # TODO: implement logic: hard coded now
         if abs(abs(self.autobot_info.heading) - 180) < 20:
@@ -181,15 +211,19 @@ class RescueAgentNode(DTROS):
             # self.pub_tst.publish("Hello from autobot{}".format(self.veh_id)) 
 
             if self.activated:
-                self.log("In rescue operation")
                 # self.calculate_car_cmd()
                 if self.car_cmd_array:
                     self.current_car_cmd = self.car_cmd_array.pop(0)
                     self.pub_car_cmd.publish(self.current_car_cmd)
-                    self.finished_execution = False
-                    if not self.car_cmd_array:
-                        # just popped out last one
-                        self.finished_execution = True
+                    # self.finished_execution = False
+                    self.log("Applying {}".format(self.current_car_cmd.v))
+                    # if not self.car_cmd_array:
+                    #     # just popped out last one
+                    #     self.finished_execution = True
+                else:
+                    self.log("Finished applying commands")
+                    self.stopDuckiebot()
+                    # self.calculate_car_cmd()
 
                 if self.finishedRescue():
                     self.log("Finished Rescue")
