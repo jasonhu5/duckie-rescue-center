@@ -20,15 +20,12 @@ class RescueAgentNode(DTROS):
         self.veh_name = rospy.get_param("~distressed_veh") #e.g. autobot27
         self.veh_id = int(''.join([x for x in self.veh_name if x.isdigit()])) # e.g. 27
         self.activated = False
-
         self.autobot_info = AutobotInfo()
 
         # self.distressType = 0 # int
-        # self.currentPose = Pose2DStamped() # x, y, theta
         self.current_car_cmd = Twist2DStamped() # v, omega
         self.current_car_cmd.v = 0
         self.current_car_cmd.omega = 0
-
         self.car_cmd_array = list()
 
         # build map
@@ -38,7 +35,6 @@ class RescueAgentNode(DTROS):
             "test_map.yaml"
         )
         self.map = SimpleMap(map_file_path)
-
 
         self.finished_execution = False
 
@@ -50,6 +46,10 @@ class RescueAgentNode(DTROS):
         # 2. distress classification from rescue_center_node
         self.sub_distress_classification = rospy.Subscriber("/{}/distress_classification".format(self.veh_name),
                 String, self.cb_rescue)
+        # 3. Autobot info from rescue_center_node
+        self.sub_autobot_info = rospy.Subscriber(
+            "/{}/autobot_info".format(self.veh_name), AutobotInfoMsg, self.cb_autobot_info
+        )
 
         # Publisher
         # 1. everything ok to rescue_center_node
@@ -67,9 +67,7 @@ class RescueAgentNode(DTROS):
             String,
             queue_size=1,
         )
-        self.sub_autobot_info = rospy.Subscriber(
-            "/{}/autobot_info".format(self.veh_name), AutobotInfoMsg, self.cb_autobot_info
-        )
+        
 
     def cb_autobot_info(self, msg):
         self.pub_tst.publish("Got info for {}".format(self.veh_name))
@@ -80,7 +78,7 @@ class RescueAgentNode(DTROS):
         self.autobot_info.filtered = (msg.filtered[0], msg.filtered[1])
         # msg.heading = 
         self.autobot_info.last_moved = msg.last_moved
-        self.autobot_info.in_rescue = msg.in_rescue
+        self.autobot_info.in_rescue = msg.in_rescue 
         self.autobot_info.onRoad = msg.onRoad
         # msg.path =  
         # print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
@@ -116,24 +114,18 @@ class RescueAgentNode(DTROS):
             self.activated = True
             self.autobot_info.rescue_class = Distress(distress_type_num)
             # stop duckiebot
-            self.current_car_cmd.v = 0
-            self.current_car_cmd.omega = 0
-            self.pub_car_cmd.publish(self.current_car_cmd)
+            self.stopDuckiebot()
             # calculate_car_cmd
             self.calculate_car_cmd()
 
     
     def calculate_car_cmd(self):
         '''Calculates car_cmd based on distress_type and current duckiebot pose'''
-        # TODO: implement actual logic
         if self.autobot_info.rescue_class == Distress.OUT_OF_LANE:
-            # out of lane
-            self.current_car_cmd.v = 0
-            self.current_car_cmd.omega = 0
+            # TODO: implement actual logic
+            self.car_cmd_array = list()
         elif self.autobot_info.rescue_class == Distress.STUCK:
             # stuck
-            self.current_car_cmd.v = 0
-            self.current_car_cmd.omega = 0
             if self.stuckedRight():
                 for i in range(3):
                     cmd = Twist2DStamped()
@@ -145,7 +137,7 @@ class RescueAgentNode(DTROS):
                     cmd.v = 0
                     cmd.omega = 0.8
                     self.car_cmd_array.append(cmd) 
-            print(self.car_cmd_array)
+        print(self.car_cmd_array)
     
     def stuckedRight(self):
        '''checks, if duckiebot is stuck left or right'''
@@ -165,6 +157,7 @@ class RescueAgentNode(DTROS):
         # if self.goodHeading():
         #     return True
         return False
+        
     def goodHeading(self):
         # TODO: implement logic: hard coded now
         if abs(abs(self.autobot_info.heading) - 180) < 20:

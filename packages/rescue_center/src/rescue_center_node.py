@@ -154,7 +154,7 @@ class RescueTriggerNode(DTROS):
                 continue
 
             idx = m.id
-            # Append new bots to list if they show up
+            # Append new bots to list if they show up the first time
             if not idx in self.veh_list:
                 self.veh_list.append(idx)
                 self.id_dict[idx] = AutobotInfo()
@@ -166,27 +166,27 @@ class RescueTriggerNode(DTROS):
                     "rescue_agent.launch", "botID:={}".format(idx)
                 ])
 
-            # Store position from localization system
+            # Store position from localization system in AutoboInfo()
             self.id_dict[idx].update_from_marker(m)
-            print("[{}] heading: {}".format(idx, self.id_dict[idx].heading))
-            # publish autobot_info to rescue_agent
-            self.pub_autobot_info.publish(self.autobotInfo2Msg(self.id_dict[idx]))
-
-
+            # print("[{}] heading: {}".format(idx, self.id_dict[idx].heading))
             # Filter position and update last_moved time stamp
             self.id_dict[idx].update_filtered(
                 m.header.stamp,
                 self.parameters['~dist_thres'],
                 self.parameters['~avg_window'],
             )
+             # publish autobot_info to rescue_agent
+            self.pub_autobot_info.publish(self.autobotInfo2Msg(self.id_dict[idx]))
+
             
             if self.id_dict[idx].in_rescue:
                 continue
-            # If duckiebot is not currently in rescue, check classifier
+            # If duckiebot is not in rescue, check classifier
             self.currentTime = m.header.stamp
             time_diff = self.currentTime.to_sec()-self.id_dict[idx].last_moved.to_sec()
-
             rescue_class = self.id_dict[idx].classifier(time_diff, self.map)
+            self.id_dict[idx].rescue_class = rescue_class
+            # For debugging
             if idx == 27:
                 print("[{}]: time diff[s]: {}".format(idx, time_diff))
                 print("[{}] ({}) onRoad {}".format(idx, self.id_dict[idx].position, self.id_dict[idx].onRoad))
