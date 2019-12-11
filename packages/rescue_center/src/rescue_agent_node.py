@@ -15,6 +15,8 @@ OMEGA_CMD_PER_TURN = 8
 DEGREE_PER_TURN = 24
 V_CMD_PER_STEP = -0.1
 CM_PER_STEP = 2
+EXTRA_DISTANCE_IN_M = 0.05
+LESS_ANGLE_IN_DEGREE = 20
 
 
 class RescueAgentNode(DTROS):
@@ -86,6 +88,8 @@ class RescueAgentNode(DTROS):
         self.autobot_info.in_rescue = msg.in_rescue 
         self.autobot_info.onRoad = msg.onRoad
         self.autobot_info.heading = msg.heading
+        print("Received Autobot info {}".format(self.autobot_info.heading))
+
         # msg.path =  
         # print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
         # print(vars(info))
@@ -124,7 +128,6 @@ class RescueAgentNode(DTROS):
             # TODO: let duckiebot pause, such that localization can get correct position
             # calculate_car_cmd
             self.calculate_car_cmd()
-
     
     def calculate_car_cmd(self):
         '''Calculates car_cmd based on distress_type and current duckiebot pose'''
@@ -132,20 +135,25 @@ class RescueAgentNode(DTROS):
         current_heading = self.autobot_info.heading # degree
         self.log("Distressed at: {} with heading: {}".format(current_pos, current_heading))
         desired_pos = self.map.pos_to_ideal_position(current_pos)
-        print(desired_pos)
+        desired_heading = self.map.pos_to_ideal_heading(current_pos)
+        print("Desired position: {}, Desired Heading: {}".format(desired_pos, desired_heading))
 
         if self.autobot_info.rescue_class == Distress.OUT_OF_LANE:
             # TODO: implement actual logic
             self.car_cmd_array = list()
         elif self.autobot_info.rescue_class == Distress.STUCK:
             # stuck
-            # if desired_pos[0] == None:
-                # vertical straight tile
-                # if 
-                # desired_pos_y = desired_pos[1]
-
-            self.moveBack_cmDistance(15, smoothCmd=False) #add cmds to array
-            self.turn_angle(-45, smoothCmd=False)
+            if desired_pos[0] == current_pos[0]:
+                #vertical straight tile
+                desired_pos_y = desired_pos[1] + np.sign(desired_pos_y-current_pos[1])*EXTRA_DISTANCE_IN_M
+                if current_heading > 90 and current_heading < 180:
+                    distance_backwards_cm = 100*abs(desired_pos_y-current_pos[1])/math.sin(math.pi/180*(180-current_heading))
+                    print("Distance to move back: {}".format(distance_backwards_cm))
+                    angle_to_turn = desired_heading - current_heading - np.sign(desired_heading - current_heading)*LESS_ANGLE_IN_DEGREE
+                    print("Angle to turn: {}".format(angle_to_turn))
+            
+                    self.moveBack_cmDistance(distance_backwards_cm, smoothCmd=False) #add cmds to array
+                    self.turn_angle(angle_to_turn, smoothCmd=False)
 
 
             # for i in range(3):
@@ -186,8 +194,8 @@ class RescueAgentNode(DTROS):
             self.log("[Error in moveBack_cmDistance]: autobot must move more than {}cm".format(CM_PER_STEP))
         else:
             num_packages = int(math.floor(distance_inCM/CM_PER_STEP))
-        for i in range(num_packages):
-            self.car_cmd_array = self.car_cmd_array + cmd_package
+            for i in range(num_packages):
+                self.car_cmd_array = self.car_cmd_array + cmd_package
     
     def turn_angle(self, angle_inDeg, smoothCmd = False):
         '''adds cmds to self.car_cmd_array to turn specified angle'''

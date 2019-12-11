@@ -299,6 +299,7 @@ class SimpleMap():
 
     def get_tile(self, position):
         # returns the indices of the tile from current position
+        if position is None: return None
         tile_x = int(math.floor(position[0]/self.tile_size))
         tile_y = int(math.floor(position[1]/self.tile_size))
         if not self.try_tile_idx((tile_x, tile_y)): return None
