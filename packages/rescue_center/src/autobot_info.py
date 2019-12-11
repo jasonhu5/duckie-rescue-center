@@ -6,6 +6,7 @@ import numpy as np
 from enum import Enum
 from visualization_msgs.msg import Marker, MarkerArray
 
+TIME_DIFF_THRESHOLD = 10
 
 class AutobotInfo():
     def __init__(self):
@@ -41,6 +42,9 @@ class AutobotInfo():
     def classifier(self, time_diff, map):
         # only changed, if classfied
         self.onRoad = map.position_on_map(self.position, subtile=True)
+        # heading = map.pos_to_ideal_heading(self.position)
+        # print("Ideal heading [deg]: {}".format(heading))
+
         # 0. debug mode: change through ros parameter
         debug_param = rospy.get_param('~trigger_rescue') # TODO: one for each autobot
         if debug_param:
@@ -48,7 +52,7 @@ class AutobotInfo():
         elif not self.onRoad:
             self.rescue_class =  Distress.OUT_OF_LANE
         # 2. stuck
-        elif time_diff > 10: #TODO: change this parameter
+        elif time_diff > TIME_DIFF_THRESHOLD: #TODO: change this parameter
             self.rescue_class =  Distress.STUCK
         else:
             self.rescue_class = Distress.NORMAL_OPERATION

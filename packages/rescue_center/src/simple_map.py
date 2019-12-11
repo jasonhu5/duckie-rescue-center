@@ -30,30 +30,33 @@ class SimpleMap():
         # Tile specific orientation
         # - locations of center(s) of curve
         self.curve_left_c = {
+            "N":[(0, 0)],
+            "E":[(0, 1)],
+            "S":[(1, 1)],
+            "W":[(1, 0)],
+        }
+        self.curve_right_c = {
             "N":[(1, 0)],
             "E":[(0, 0)],
             "S":[(0, 1)],
             "W":[(1, 1)],
         }
-        self.curve_right_c = {
-            "N":[(1, 1)],
-            "E":[(1, 0)],
-            "S":[(0, 0)],
-            "W":[(0, 1)],
-        }
         self.threeway_left_c = {
-            "N":[(1, 0), (0, 0)],
-            "E":[(0, 0), (0, 1)],
-            "S":[(0, 1), (1, 1)],
-            "W":[(1, 1), (1, 0)],
+            "N":[(0, 0), (0, 1)],
+            "E":[(0, 1), (1, 1)],
+            "S":[(1, 1), (1, 0)],
+            "W":[(1, 0), (0, 0)],
         }
         self.threeway_right_c = {
-            "N":[(1, 1), (0, 1)],
-            "E":[(1, 0), (1, 1)],
-            "S":[(0, 0), (1, 0)],
-            "W":[(0, 1), (0, 0)],
+            "N":[(1, 0), (1, 1)],
+            "E":[(0, 0), (1, 0)],
+            "S":[(0, 1), (0, 0)],
+            "W":[(1, 1), (0, 1)],
         }
         self.fourway_c = [(0, 0), (0, 1), (1, 0), (1, 1)]
+        # - possible boarder positions
+        self.boarders = ["N", "E", "S", "W"]
+
 
         # rotate map to suit localization output
         map_raw_corrected = [r[::-1] for r in zip(*map_raw)]
@@ -89,78 +92,112 @@ class SimpleMap():
                 tile = re.split("[/_]", map_raw[row][col])
                 if not self.try_orientation(tile[-1]): return None
                 if "asphalt" in tile[0]:
-                    map_dict[(row, col)] = Tile("asphalt")
+                    map_dict[(row, col)] = Tile("asphalt", [], self.boarders)
                 elif "4way" in tile[0]:
                     centers = self.fourway_c
-                    map_dict[(row, col)] = Tile("4way", centers)
+                    map_dict[(row, col)] = Tile("4way", centers, [])
                 elif "straight" in tile[0]:
                     if "S" in tile[-1] or "N" in tile[-1]:
-                        lines = ["E", "W"]
+                        boarders = ["N", "S"]
                     else:
-                        lines = ["N", "S"]
-                    map_dict[(row, col)] = Tile("straight", [], lines)
+                        boarders = ["E", "W"]
+                    map_dict[(row, col)] = Tile("straight", [], boarders)
                 elif "curve" in tile[0]:
                     if "left" in tile[1]:
                         centers = self.curve_left_c[tile[-1]]
                     elif "right" in tile:
                         centers = self.curve_right_c[tile[-1]]
-                    map_dict[(row, col)] = Tile("curve", centers)
+                    map_dict[(row, col)] = Tile("curve", centers, [])
                 elif "3way" in tile[0]:
                     if "left" in tile[1]:
                         centers = self.threeway_left_c[tile[-1]]
+                        o = self.boarders.index(tile[-1])+2
+                        boarders = self.boarders[o%len(self.boarders)]
                     elif "right" in tile:
                         centers = self.threeway_right_c[tile[-1]]
-                    map_dict[(row, col)] = Tile("3way", centers)
+                        o = self.boarders.index(tile[-1])-1
+                        boarders = self.boarders[o%len(self.boarders)]
+                    map_dict[(row, col)] = Tile("3way", centers, ['{}'.format(boarders)])
                 else:
                     print("Unknown Tile"); return None
-        #print("Semantic Map")
-        #print(map_dict)
         return map_dict
 
 
     ''' POSITIONING FUNCTIONS'''
     def position_on_map(self, position, subtile=False):
+        # Returns higher-level information on the position_on_map
+        # depending on the map (bin, sem, etc.)
         if subtile:
             map = self.map_sem
         else:
             map = self.map_bin
-        # Returns higher-level information on the position_on_map
-        # depending on the map passed as argument (bin, state, etc.)
         tile_x = int(math.floor(position[0]/self.tile_size))
         tile_y = int(math.floor(position[1]/self.tile_size))
-        print(tile_x, tile_y)
+        if not self.try_tile_idx((tile_x, tile_y)): return None
+        print(self.map_sem[(tile_x, tile_y)])
         if subtile:
             # So far only curve and asphalt criterion
             on_lane = 1
             if type(map) is not dict:
-                print("Passed wrong map as arg, need sem."); return
+                print("Passed wrong map as arg, need semantic"); return
             if map[(tile_x, tile_y)].type == "asphalt":
                 on_lane = 0
             elif map[(tile_x, tile_y)].type == "curve":
-                #x = (position[0] % self.tile_size)
-                #y = (position[1] % self.tile_size)
-                x = map[(tile_x, tile_y)].centers[0][0]*self.tile_size - (position[0] % self.tile_size)
-                y = map[(tile_x, tile_y)].centers[0][1]*self.tile_size - (position[1] % self.tile_size)
+                # Calculate disstance from center of curve
+                x = abs(map[(tile_x, tile_y)].centers[0][0]*self.tile_size - (position[0] % self.tile_size))
+                y = abs(map[(tile_x, tile_y)].centers[0][1]*self.tile_size - (position[1] % self.tile_size))
                 if math.sqrt(x**2+y**2) > self.tile_size:
                     on_lane = 0
-                print("Tile_size = ", self.tile_size)
-                print("x = {}, and y = {}".format(x,y))
-                print("Distance from center:" , math.sqrt(x**2+y**2))
+                print("Distances from center: x = {}, and y = {}".format(x,y))
             return on_lane
         else:
             if type(map) is not np.ndarray:
-                print("Passed wrong map as arg, need bin"); return
+                print("Passed wrong map as arg, need binary"); return
             return map[tile_x, tile_y]
 
-    def  inTheMiddleOfTheRoad(self, position):
-        '''Checks, if I am in te middle of the road '''
-        return False
-
     def pos_to_ideal_heading(self, position):
-        # TODO: import from Carl
-        return 0
-    
-    
+        # Returns the correct angle a duckiebot should have for a
+        # certain position passed as argument
+        # Returns None for positions on 4/way, 3/way or asphalt tile
+        tile_x = int(math.floor(position[0]/self.tile_size))
+        tile_y = int(math.floor(position[1]/self.tile_size))
+        if not self.try_tile_idx((tile_x, tile_y)): return None
+        tile = self.map_sem[(tile_x, tile_y)]
+        heading = None
+        if tile.type == "straight":
+            if tile.boarders == ["N", "S"]:
+                lane = round((position[0] % self.tile_size)/self.tile_size)
+                heading = -90+lane*180
+            else:
+                lane = round((position[1] % self.tile_size)/self.tile_size)
+                heading = lane*180
+        elif tile.type == "curve":
+            if(self.position_on_map(position, subtile=True)):
+                # get center of 1/4 circle (= curve)
+                center_x = self.map_sem[(tile_x, tile_y)].centers[0][0]
+                center_y = self.map_sem[(tile_x, tile_y)].centers[0][1]
+                # calculate distance from center
+                x = abs(center_x*self.tile_size - (position[0] % self.tile_size))
+                y = abs(center_y*self.tile_size - (position[1] % self.tile_size))
+                # check if on inner or outer lane
+                lane = round(math.sqrt(x**2+y**2)/self.tile_size)
+                print("outer lane") if lane else "inner lane"
+                # convert center from binary to {-1;1} for atan2 calculations
+                curve_sign_x = 2*(center_x-0.5)
+                curve_sign_y = 2*(center_y-0.5)
+                # calculate angle in relative coordinate system
+                heading = -math.atan2(y*curve_sign_y,x*curve_sign_x)
+                # convert angle to global coordinate system and account for lane
+                # turn by 90 deg and reverse for other lane (+180 deg)
+                heading = self.normalize_angle((0.5+lane)*math.pi - heading)
+        return heading
+
+    def normalize_angle(self, angle):
+        # takes an angle in radians and converts it to degrees in (-180;180]
+        newAngle = 180/math.pi*angle
+        while (newAngle <= -180): newAngle += 360
+        while (newAngle > 180): newAngle -= 360
+        return round(newAngle)
 
     ''' ERROR HANDLING '''
     def try_orientation(self, o):
@@ -169,6 +206,15 @@ class SimpleMap():
             return True
         else:
             print("Unknown orientation"); return False
+    
+    def try_tile_idx(self, index):
+        i,j = index
+        if i*j >= 0 and i < self.map_bin.shape[0] and j < self.map_bin.shape[1]:
+            return True
+        else:
+            print("Position not on map")
+            return False
+         
 
 
     ''' PRINT FUNCTIONS FOR DEBUGGING '''
@@ -231,13 +277,12 @@ class SimpleMap():
 
 class Tile():
 
-    def __init__(self, type, centers=[], lines=[]):
+    def __init__(self, type, centers=[], boarders=[]):
         # Only used to store min parameters to determine type and orientation
         self.type = type
         self.centers = centers
-        self.lines = lines
-
+        self.boarders = boarders
 
     def __str__(self):
-        tile = "Type = {}, Centers = {}, Lines =  {}"
-        return tile.format(self.type, self.centers, self.lines)
+        tile = "Type = {}, Centers = {}, Boarders =  {}"
+        return tile.format(self.type, self.centers, self.boarders)

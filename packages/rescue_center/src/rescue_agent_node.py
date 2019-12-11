@@ -11,7 +11,11 @@ from simple_map import SimpleMap
 import math
 import numpy as np
 
-# 11 
+OMEGA_CMD_PER_TURN = 8
+DEGREE_PER_TURN = 24
+V_CMD_PER_STEP = -0.1
+CM_PER_STEP = 2
+
 
 class RescueAgentNode(DTROS):
 
@@ -150,7 +154,7 @@ class RescueAgentNode(DTROS):
         if debug:
             cmd_move.v = rospy.get_param('~velocity_backwards')
         else:
-            cmd_move.v = -0.1
+            cmd_move.v = V_CMD_PER_STEP
         cmd_move.omega = 0
 
         if not smoothCmd:
@@ -167,10 +171,10 @@ class RescueAgentNode(DTROS):
             # TODO: for smooth cmd: 20 percent bigger distance than withou
             cmd_package = [cmd_move]
         
-        if distance_inCM < 2:
-            self.log("[Error in moveBack_cmDistance]: autobot must move more than 2cm")
+        if distance_inCM < CM_PER_STEP:
+            self.log("[Error in moveBack_cmDistance]: autobot must move more than {}cm".format(CM_PER_STEP))
         else:
-            num_packages = int(math.floor(distance_inCM/2))
+            num_packages = int(math.floor(distance_inCM/CM_PER_STEP))
         for i in range(num_packages):
             self.car_cmd_array = self.car_cmd_array + cmd_package
     
@@ -179,7 +183,7 @@ class RescueAgentNode(DTROS):
         # TODO: make code look nicer
         cmd_turn = Twist2DStamped()
         cmd_turn.v = 0
-        cmd_turn.omega = np.sign(angle_inDeg)*8
+        cmd_turn.omega = np.sign(angle_inDeg)*OMEGA_CMD_PER_TURN
         cmd_turn_array = list()
         for i in range(1):
             cmd_turn_array.append(cmd_turn)
@@ -199,10 +203,10 @@ class RescueAgentNode(DTROS):
             cmd_package = list(cmd_turn_array)
         # cmd_package needs 4-5 turns to get 45 degrees
         # self.car_cmd_array = self.car_cmd_array + cmd_package
-        if abs(angle_inDeg) < 24:
-            self.log("[Error in moveBack_cmDistance]: autobot must turn more than 12 degrees")
+        if abs(angle_inDeg) < DEGREE_PER_TURN:
+            self.log("[Error in moveBack_cmDistance]: autobot must turn more than {} degrees".format(DEGREE_PER_TURN))
         else:
-            num_packages = int(math.floor(abs(angle_inDeg)/24))
+            num_packages = int(math.floor(abs(angle_inDeg)/DEGREE_PER_TURN))
             for i in range(num_packages):
                 self.car_cmd_array = self.car_cmd_array + cmd_package
 
