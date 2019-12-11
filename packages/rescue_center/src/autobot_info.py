@@ -49,8 +49,9 @@ class AutobotInfo():
         debug_param = rospy.get_param('~trigger_rescue') # TODO: one for each autobot
         if debug_param:
             return Distress.DEBUG
-        elif not self.onRoad:
-            self.rescue_class =  Distress.OUT_OF_LANE
+        # TODO: uncomment out_of_road case
+        # elif not self.onRoad:
+        #     self.rescue_class =  Distress.OUT_OF_LANE
         # 2. stuck
         elif time_diff > TIME_DIFF_THRESHOLD: #TODO: change this parameter
             self.rescue_class =  Distress.STUCK

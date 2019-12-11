@@ -131,24 +131,26 @@ class SimpleMap():
             map = self.map_sem
         else:
             map = self.map_bin
-        tile_x = int(math.floor(position[0]/self.tile_size))
-        tile_y = int(math.floor(position[1]/self.tile_size))
-        if not self.try_tile_idx((tile_x, tile_y)): return None
-        print(self.map_sem[(tile_x, tile_y)])
+        # Check if valid position
+        if self.get_tile(position) is not None:
+            tile_x, tile_y = self.get_tile(position)
+        else:
+            return None
         if subtile:
             # So far only curve and asphalt criterion
+            tile = self.map_sem[(tile_x, tile_y)]
             on_lane = 1
             if type(map) is not dict:
                 print("Passed wrong map as arg, need semantic"); return
-            if map[(tile_x, tile_y)].type == "asphalt":
+            if tile.type == "asphalt":
                 on_lane = 0
-            elif map[(tile_x, tile_y)].type == "curve":
+            elif tile.type == "curve":
                 # Calculate disstance from center of curve
-                x = abs(map[(tile_x, tile_y)].centers[0][0]*self.tile_size - (position[0] % self.tile_size))
-                y = abs(map[(tile_x, tile_y)].centers[0][1]*self.tile_size - (position[1] % self.tile_size))
+                x = abs(tile.centers[0][0]*self.tile_size - (position[0] % self.tile_size))
+                y = abs(tile.centers[0][1]*self.tile_size - (position[1] % self.tile_size))
                 if math.sqrt(x**2+y**2) > self.tile_size:
                     on_lane = 0
-                print("Distances from center: x = {}, and y = {}".format(x,y))
+                # print("Distances from center: x = {}, and y = {}".format(x,y))
             return on_lane
         else:
             if type(map) is not np.ndarray:
@@ -159,9 +161,11 @@ class SimpleMap():
         # Returns the correct angle a duckiebot should have for a
         # certain position passed as argument
         # Returns None for positions on 4/way, 3/way or asphalt tile
-        tile_x = int(math.floor(position[0]/self.tile_size))
-        tile_y = int(math.floor(position[1]/self.tile_size))
-        if not self.try_tile_idx((tile_x, tile_y)): return None
+        # Check if valid position
+        if self.get_tile(position) is not None:
+            tile_x, tile_y = self.get_tile(position)
+        else:
+            return None
         tile = self.map_sem[(tile_x, tile_y)]
         heading = None
         if tile.type == "straight":
@@ -174,8 +178,8 @@ class SimpleMap():
         elif tile.type == "curve":
             if(self.position_on_map(position, subtile=True)):
                 # get center of 1/4 circle (= curve)
-                center_x = self.map_sem[(tile_x, tile_y)].centers[0][0]
-                center_y = self.map_sem[(tile_x, tile_y)].centers[0][1]
+                center_x = tile.centers[0][0]
+                center_y = tile.centers[0][1]
                 # calculate distance from center
                 x = abs(center_x*self.tile_size - (position[0] % self.tile_size))
                 y = abs(center_y*self.tile_size - (position[1] % self.tile_size))
@@ -192,12 +196,37 @@ class SimpleMap():
                 heading = self.normalize_angle((0.5+lane)*math.pi - heading)
         return heading
 
-    def normalize_angle(self, angle):
-        # takes an angle in radians and converts it to degrees in (-180;180]
-        newAngle = 180/math.pi*angle
-        while (newAngle <= -180): newAngle += 360
-        while (newAngle > 180): newAngle -= 360
-        return round(newAngle)
+    def pos_to_ideal_position(self, position):
+        if self.get_tile(position) is not None:
+            tile_x, tile_y = self.get_tile(position)
+        else:
+            return None
+        tile = self.map_sem[(tile_x, tile_y)]
+        coordinates = None
+        if tile.type == "straight":
+            if tile.boarders == ["N", "S"]:
+                lane = round((position[0] % self.tile_size)/self.tile_size)
+                coordinates = ((tile_x+0.25+lane/2)*self.tile_size, position[1])
+            else:
+                lane = round((position[1] % self.tile_size)/self.tile_size)
+                coordinates = (position[0], (tile_y+0.25+lane/2)*self.tile_size)
+        elif tile.type == "curve":
+                center_x = tile.centers[0][0]
+                center_y = tile.centers[0][1]
+                # calculate distance from center
+                x = abs(center_x*self.tile_size - (position[0] % self.tile_size))
+                y = abs(center_y*self.tile_size - (position[1] % self.tile_size))
+                # check if on inner or outer lane
+                lane = round(math.sqrt(x**2+y**2)/self.tile_size)
+                # calculate position using intercept theorem
+                base_x = (tile_x + center_x)*self.tile_size
+                base_y = (tile_y + center_y)*self.tile_size
+                distance = math.sqrt(x**2+y**2)
+                coord_x = base_x + x * ((0.25+lane/2)*self.tile_size)/distance
+                coord_y = base_y + y * ((0.25+lane/2)*self.tile_size)/distance
+                coordinates = (coord_x, coord_y)
+        return coordinates
+
 
     ''' ERROR HANDLING '''
     def try_orientation(self, o):
@@ -206,15 +235,14 @@ class SimpleMap():
             return True
         else:
             print("Unknown orientation"); return False
-    
+
     def try_tile_idx(self, index):
         i,j = index
         if i*j >= 0 and i < self.map_bin.shape[0] and j < self.map_bin.shape[1]:
             return True
         else:
-            print("Position not on map")
-            return False
-         
+            print("Position not on map"); return False
+
 
 
     ''' PRINT FUNCTIONS FOR DEBUGGING '''
@@ -258,7 +286,6 @@ class SimpleMap():
             ' '
         )
 
-
     def display_sem_debug(self):
         # Display semantic map for debugging
         numrows = len(self.map_raw)
@@ -268,6 +295,21 @@ class SimpleMap():
             for col in range(numcols):
                 print(self.map_sem[(row,col)])
 
+    ''' HELPER FUNCTIONS '''
+
+    def get_tile(self, position):
+        # returns the indices of the tile from current position
+        tile_x = int(math.floor(position[0]/self.tile_size))
+        tile_y = int(math.floor(position[1]/self.tile_size))
+        if not self.try_tile_idx((tile_x, tile_y)): return None
+        return tile_x, tile_y
+
+    def normalize_angle(self, angle):
+        # takes an angle in radians and converts it to degrees in (-180;180]
+        newAngle = 180/math.pi*angle
+        while (newAngle <= -180): newAngle += 360
+        while (newAngle > 180): newAngle -= 360
+        return round(newAngle)
 
     def display_matrix(self, mat, name=None, sep_word="", sep_line="\n"):
         print("\n<%s>" % name if name else "\n")

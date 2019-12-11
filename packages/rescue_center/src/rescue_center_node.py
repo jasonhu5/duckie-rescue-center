@@ -168,7 +168,7 @@ class RescueTriggerNode(DTROS):
 
             # Store position from localization system in AutoboInfo()
             self.id_dict[idx].update_from_marker(m)
-            # print("[{}] heading: {}".format(idx, self.id_dict[idx].heading))
+            print("[{}] heading: {}".format(idx, self.id_dict[idx].heading))
             # Filter position and update last_moved time stamp
             self.id_dict[idx].update_filtered(
                 m.header.stamp,

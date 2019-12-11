@@ -82,10 +82,10 @@ class RescueAgentNode(DTROS):
         self.autobot_info.fsm_state = msg.fsm_state
         self.autobot_info.position = (msg.position[0], msg.position[1])
         self.autobot_info.filtered = (msg.filtered[0], msg.filtered[1])
-        # msg.heading = 
         self.autobot_info.last_moved = msg.last_moved
         self.autobot_info.in_rescue = msg.in_rescue 
         self.autobot_info.onRoad = msg.onRoad
+        self.autobot_info.heading = msg.heading
         # msg.path =  
         # print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
         # print(vars(info))
@@ -121,32 +121,43 @@ class RescueAgentNode(DTROS):
             self.autobot_info.rescue_class = Distress(distress_type_num)
             # stop duckiebot
             self.stopDuckiebot()
+            # TODO: let duckiebot pause, such that localization can get correct position
             # calculate_car_cmd
             self.calculate_car_cmd()
 
     
     def calculate_car_cmd(self):
         '''Calculates car_cmd based on distress_type and current duckiebot pose'''
+        current_pos = self.autobot_info.position # (x, y)
+        current_heading = self.autobot_info.heading # degree
+        self.log("Distressed at: {} with heading: {}".format(current_pos, current_heading))
+        desired_pos = self.map.pos_to_ideal_position(current_pos)
+        print(desired_pos)
+
         if self.autobot_info.rescue_class == Distress.OUT_OF_LANE:
             # TODO: implement actual logic
             self.car_cmd_array = list()
         elif self.autobot_info.rescue_class == Distress.STUCK:
             # stuck
-            if self.stuckedRight():
-                self.moveBack_cmDistance(15, smoothCmd=False) #add cmds to array
-                self.turn_angle(-45, smoothCmd=False)
-                # for i in range(3):
-                #     cmd = Twist2DStamped()
-                #     cmd.v = -0.5
-                #     cmd.omega = 0
-                #     self.car_cmd_array.append(cmd) 
-                # for i in range(3):
-                #     cmd = Twist2DStamped()
-                #     cmd.v = 0
-                #     cmd.omega = 0.8
-                #     self.car_cmd_array.append(cmd) 
-            #TODO: stuckedLeft()
-        # print(self.car_cmd_array)
+            # if desired_pos[0] == None:
+                # vertical straight tile
+                # if 
+                # desired_pos_y = desired_pos[1]
+
+            self.moveBack_cmDistance(15, smoothCmd=False) #add cmds to array
+            self.turn_angle(-45, smoothCmd=False)
+
+
+            # for i in range(3):
+            #     cmd = Twist2DStamped()
+            #     cmd.v = -0.5
+            #     cmd.omega = 0
+            #     self.car_cmd_array.append(cmd) 
+            # for i in range(3):
+            #     cmd = Twist2DStamped()
+            #     cmd.v = 0
+            #     cmd.omega = 0.8
+            #     self.car_cmd_array.append(cmd) 
 
     def moveBack_cmDistance(self, distance_inCM, smoothCmd = False, debug = False):
         '''adds cmds to self.car_cmd_array to move back specified distance'''
