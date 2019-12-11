@@ -9,6 +9,7 @@ from autobot_info import AutobotInfo, Distress
 from rescue_center.msg import AutobotInfoMsg
 from simple_map import SimpleMap
 import math
+import numpy as np
 
 # 11 
 
@@ -128,8 +129,8 @@ class RescueAgentNode(DTROS):
         elif self.autobot_info.rescue_class == Distress.STUCK:
             # stuck
             if self.stuckedRight():
-                # self.moveBack_cmDistance(10, smoothCmd=True) #add cmds to array
-                self.turn_angle(90)
+                self.moveBack_cmDistance(15, smoothCmd=False) #add cmds to array
+                self.turn_angle(-45, smoothCmd=False)
                 # for i in range(3):
                 #     cmd = Twist2DStamped()
                 #     cmd.v = -0.5
@@ -175,9 +176,10 @@ class RescueAgentNode(DTROS):
     
     def turn_angle(self, angle_inDeg, smoothCmd = False):
         '''adds cmds to self.car_cmd_array to turn specified angle'''
+        # TODO: make code look nicer
         cmd_turn = Twist2DStamped()
         cmd_turn.v = 0
-        cmd_turn.omega = 8
+        cmd_turn.omega = np.sign(angle_inDeg)*8
         cmd_turn_array = list()
         for i in range(1):
             cmd_turn_array.append(cmd_turn)
@@ -186,23 +188,23 @@ class RescueAgentNode(DTROS):
             cmd_pause = Twist2DStamped()
             cmd_pause.v = 0.0
             cmd_pause.omega = 0.0        
-            #this moves 2cm
+            #this moves 24 deg
             cmd_package = list()
             for i in range(5):
                 # TODO: make code nicer
                 cmd_package.append(cmd_pause)
             cmd_package = cmd_turn_array + cmd_package
         else:
-            # TODO: for smooth cmd: 20 percent bigger distance than without
+            # TODO: overshoots, decrease gain
             cmd_package = list(cmd_turn_array)
         # cmd_package needs 4-5 turns to get 45 degrees
         # self.car_cmd_array = self.car_cmd_array + cmd_package
-        if angle_inDeg < 12:
-            self.log("[Error in moveBack_cmDistance]: autobot must move more than 2cm")
+        if abs(angle_inDeg) < 24:
+            self.log("[Error in moveBack_cmDistance]: autobot must turn more than 12 degrees")
         else:
-            num_packages = int(math.floor(angle_inDeg/12))
-        for i in range(num_packages):
-            self.car_cmd_array = self.car_cmd_array + cmd_package
+            num_packages = int(math.floor(abs(angle_inDeg)/24))
+            for i in range(num_packages):
+                self.car_cmd_array = self.car_cmd_array + cmd_package
 
     def stuckedRight(self):
        '''checks, if duckiebot is stuck left or right'''
@@ -248,7 +250,7 @@ class RescueAgentNode(DTROS):
                     self.current_car_cmd = self.car_cmd_array.pop(0)
                     self.pub_car_cmd.publish(self.current_car_cmd)
                     # self.finished_execution = False
-                    self.log("Applying {}".format(self.current_car_cmd.omega))
+                    self.log("Applying v = {}, w = {}".format(self.current_car_cmd.v, self.current_car_cmd.omega))
                     # if not self.car_cmd_array:
                     #     # just popped out last one
                     #     self.finished_execution = True
