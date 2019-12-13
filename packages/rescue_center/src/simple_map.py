@@ -8,9 +8,19 @@ import yaml
 import re
 
 class SimpleMap():
-    ''' INITIALIZE '''
+    ''' --- INITIALIZE --- '''
 
     def __init__(self, map_file):
+        """Init method, to generate a new map from a yaml file
+
+        Note: 
+
+        Args:
+            map_file: filename to read map from e.g. "test_map.yaml" 
+
+        Returns:
+            
+        """
         # Read yaml file
         with open(map_file, 'r') as stream:
             try:
@@ -82,8 +92,20 @@ class SimpleMap():
 
 
     def raw2sem(self, map_raw):
-        # Return a semantic map with tile type and orientations
-        # orientation given through coordinates of curve center
+        """Method to generate a semantic map from raw map containing
+        information about tile type, orientation and boarders
+
+        Note: 
+            Requires the Tile Object
+            TODO: Unnecessary to pass map, could use class variable
+
+        Args:
+            map_raw: raw_map read from yaml file
+
+        Returns:
+            A semantic map as dict of Tiles (keys = position tuple)
+            
+        """
         map_dict = dict()
         numrows = len(map_raw)
         numcols = len(map_raw[0])
@@ -123,8 +145,22 @@ class SimpleMap():
         return map_dict
 
 
-    ''' POSITIONING FUNCTIONS'''
+    ''' --- POSITIONING FUNCTIONS --- '''
+
     def position_on_map(self, position, subtile=False):
+        """Method to make sense of a raw position on the map 
+
+        Note: 
+
+        Args:
+            position: tuple of (x,y) position on map in [m]
+            subtile: Boolean to pass desired level of precision
+
+        Returns:
+            0 position is if off lane, 1 if position is on lane
+            
+        """
+
         # Returns higher-level information on the position_on_map
         # depending on the map (bin, sem, etc.)
         if subtile:
@@ -158,9 +194,23 @@ class SimpleMap():
             return map[tile_x, tile_y]
 
     def pos_to_ideal_heading(self, position):
-        # Returns the correct angle a duckiebot should have for a
-        # certain position passed as argument
-        # Returns None for positions on 4/way, 3/way or asphalt tile
+        """Method to calculate the "should-be" orientation of the duckiebot
+        at a given position
+
+        Note: 
+            If lane following worked perfectly the heading of the duckiebot 
+            should be equal to the output of this function
+
+        Args:
+            position: tuple of (x,y) position on map in [m]
+
+        Returns:
+            An angle in [deg] between (-180,180] in localization system 
+            coordinate system
+            None for positions on 4/way, 3/way or asphalt tile
+        
+        """
+
         # Check if valid position
         if self.get_tile(position) is not None:
             tile_x, tile_y = self.get_tile(position)
@@ -197,6 +247,23 @@ class SimpleMap():
         return heading
 
     def pos_to_ideal_position(self, position):
+        """Method to calculate the "should-be" position of the duckiebot
+        at a given (real) position
+
+        Note: 
+            It only changes the lateral coordinate to be in the middle 
+            between the white and the yellow line (radial in curves, 
+            hence two new coordinates)
+
+        Args:
+            position: tuple of (x,y) position on map in [m]
+
+        Returns:
+            A position tuple (x,y) in [m] in localization coordinate system
+            None for positions on 4/way, 3/way or asphalt tile
+        
+        """
+
         if self.get_tile(position) is not None:
             tile_x, tile_y = self.get_tile(position)
         else:

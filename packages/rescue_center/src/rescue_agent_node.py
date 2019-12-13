@@ -8,6 +8,8 @@ from visualization_msgs.msg import Marker, MarkerArray
 from autobot_info import AutobotInfo, Distress
 from rescue_center.msg import AutobotInfoMsg
 from simple_map import SimpleMap
+from stuck_controller import StuckController
+from time import sleep
 import math
 import numpy as np
 
@@ -88,7 +90,7 @@ class RescueAgentNode(DTROS):
         self.autobot_info.in_rescue = msg.in_rescue 
         self.autobot_info.onRoad = msg.onRoad
         self.autobot_info.heading = msg.heading
-        print("Received Autobot info {}".format(self.autobot_info.heading))
+        # print("Received Autobot info {}".format(self.autobot_info.heading))
 
         # msg.path =  
         # print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
@@ -134,18 +136,20 @@ class RescueAgentNode(DTROS):
         current_pos = self.autobot_info.position # (x, y)
         current_heading = self.autobot_info.heading # degree
         self.log("Distressed at: {} with heading: {}".format(current_pos, current_heading))
-        desired_pos = self.map.pos_to_ideal_position(current_pos)
+        ideal_pos = self.map.pos_to_ideal_position(current_pos)
         desired_heading = self.map.pos_to_ideal_heading(current_pos)
-        print("Desired position: {}, Desired Heading: {}".format(desired_pos, desired_heading))
+        print("Desired position: {}, Desired Heading: {}".format(ideal_pos, desired_heading))
 
         if self.autobot_info.rescue_class == Distress.OUT_OF_LANE:
             # TODO: implement actual logic
             self.car_cmd_array = list()
         elif self.autobot_info.rescue_class == Distress.STUCK:
             # stuck
-            if desired_pos[0] == current_pos[0]:
+            if ideal_pos[0] == current_pos[0]:
                 #vertical straight tile
-                desired_pos_y = desired_pos[1] + np.sign(desired_pos_y-current_pos[1])*EXTRA_DISTANCE_IN_M
+                desired_pos_y = ideal_pos[1] + np.sign(ideal_pos[1]-current_pos[1])*EXTRA_DISTANCE_IN_M
+                # desired_pos_x = ideal_pos[0]
+                # desired_pos = (desired_pos_x, desired_pos_y)
                 if current_heading > 90 and current_heading < 180:
                     distance_backwards_cm = 100*abs(desired_pos_y-current_pos[1])/math.sin(math.pi/180*(180-current_heading))
                     print("Distance to move back: {}".format(distance_backwards_cm))
@@ -229,11 +233,37 @@ class RescueAgentNode(DTROS):
             for i in range(num_packages):
                 self.car_cmd_array = self.car_cmd_array + cmd_package
 
-    def stuckedRight(self):
-       '''checks, if duckiebot is stuck left or right'''
-       # TODO: implement classifier her
-       return True
-      
+    def rescue_operation_CL(self):
+        tol_pos = 0.05
+        tol_heading = 10
+        dt = 0.2
+
+        C = StuckController(k_P=0.5, k_I=0.8, u_sat=0.3, k_t=0.5, c1=1, c2=1)
+
+        current_pos = self.autobot_info.position # (x, y)
+        current_heading = self.autobot_info.heading # degree
+        # TODO: could incorperate an extra margin
+        desired_pos = self.map.pos_to_ideal_position(current_pos)
+        desired_heading = self.map.pos_to_ideal_heading(current_pos)
+
+        while(current_pos-desired_pos > tol_pos or current_heading-desired_heading > tol_heading):
+            # Calculate controller output
+            current_p = current_pos[1] if desired_pos[0] == current_pos[0] else current_pos[0]
+            desired_p = desired_pos[1] if desired_pos[0] == current_pos[0] else desired_pos[0]
+            v_out, omega_out = C.getControlOutput(current_p, current_heading, desired_p, desired_heading, v_ref=0.05, dt_last=dt)
+            # Send cmd to duckiebot
+            msg = Twist2DStamped()
+            msg.v = v_out
+            msg.omega = omega_out
+            self.pub_car_cmd.publish(msg)
+            # Sleep
+            sleep(dt)
+            # Update measurements
+            current_pos = self.autobot_info.position # (x, y)
+            current_heading = self.autobot_info.heading # degree
+            desired_pos = self.map.pos_to_ideal_position(current_pos)
+            desired_heading = self.map.pos_to_ideal_heading(current_pos)
+
 
     def finishedRescue(self):
         '''Checks, if the rescue operation has been finished based on current duckiebot pose (similar to classificiation)'''
