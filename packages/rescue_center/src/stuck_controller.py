@@ -37,7 +37,9 @@ class StuckController():
         phi_ref = phi_ref/180*math.pi
 
         # Calculate the output y
-        delta_d = d_ref - d_est
+        delta_d = math.sqrt((d_ref[0] - d_est[0])**2 + (d_ref[1] - d_est[1])**2)
+        if sum(d_ref) < sum(d_est): delta_d *= -1
+        #delta_d = d_ref - d_est
         delta_phi = phi_ref - phi_est
         if abs(delta_phi) > math.pi: delta_phi = -math.copysign(1.0, 2*math.pi-abs(delta_phi))
         #ref =   (self.c1 * d_ref + self.c2 * phi_ref)

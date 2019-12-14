@@ -311,19 +311,22 @@ class RescueAgentNode(DTROS):
                 print("Desired: pos = {}, phi = {}".format(desired_pos, desired_heading))
                 
                 # Preprocessing
-                current_p = current_pos[1] if desired_pos[0] == current_pos[0] else current_pos[0]
-                desired_p = desired_pos[1] if desired_pos[0] == current_pos[0] else desired_pos[0]
+                #current_p = current_pos[1] if desired_pos[0] == current_pos[0] else current_pos[0]
+                #desired_p = desired_pos[1] if desired_pos[0] == current_pos[0] else desired_pos[0]
+                current_p = current_pos
+                desired_p = desired_pos
                 # make sure heading is between 0 and 360
-                current_heading += 180 #if current_heading <= 0 else -180
-                desired_heading += 180 #if desired_heading <= 0 else -180
+                #current_heading += 180 #if current_heading <= 0 else -180
+                #desired_heading += 180 #if desired_heading <= 0 else -180
 
                 print("current_p: {}, desired_p: {}".format(current_p, desired_p))
                 print("current_heading: {}, desired_heading: {}".format(current_heading, desired_heading))
 
                 if self.controller_counter < 10:
-                    if(abs(current_p-desired_p) > tol_pos or abs(current_heading-desired_heading) > tol_heading):
+                    #if(abs(current_p-desired_p) > tol_pos or abs(current_heading-desired_heading) > tol_heading):   
+                    if(1):    
                         # Calculate controller output
-                        v_out, omega_out = C.getControlOutput(current_p, current_heading, desired_p, desired_heading, v_ref=1, dt_last=dt)
+                        v_out, omega_out = C.getControlOutput(current_p, current_heading, desired_p, desired_heading, v_ref=0.3, dt_last=dt)
                         if self.veh_id == 27:
                             print("[{}]: v = {}, omega = {}".format(self.veh_id, v_out, omega_out))
                         # Send cmd to duckiebot
@@ -332,7 +335,7 @@ class RescueAgentNode(DTROS):
                         msg.omega = omega_out
                         self.pub_car_cmd.publish(msg)
                         # stop car
-                        sleep(0.1)
+                        sleep(0.3)
                         self.stopDuckiebot()
                         sleep(1)
                     self.controller_counter += 1
