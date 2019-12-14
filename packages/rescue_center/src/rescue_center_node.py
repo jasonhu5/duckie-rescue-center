@@ -122,7 +122,7 @@ class RescueTriggerNode(DTROS):
         self.id_dict[veh_id].headingSimple = msg.data[3] 
         self.pub_autobot_info[veh_id].publish(self.autobotInfo2Msg(self.id_dict[veh_id]))
         # print("[{}] Received simple localization: ({}, {}, {})".format(veh_id, msg.data[1], msg.data[2], msg.data[3]))
-        print("[{}] Received simple localization: ({}, {})".format(veh_id, self.id_dict[veh_id].positionSimple, self.id_dict[veh_id].headingSimple))
+        # print("[{}] Received simple localization: ({}, {})".format(veh_id, self.id_dict[veh_id].positionSimple, self.id_dict[veh_id].headingSimple))
 
     def cbPath(self, msg, veh_id):
         self.id_dict[veh_id].updatePath(msg)

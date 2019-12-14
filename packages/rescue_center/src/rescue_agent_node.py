@@ -13,6 +13,7 @@ from time import sleep
 import math
 import numpy as np
 
+# Parameters for Open Loop Control
 OMEGA_CMD_PER_TURN = 8
 DEGREE_PER_TURN = 24
 V_CMD_PER_STEP = -0.1
@@ -29,16 +30,18 @@ class RescueAgentNode(DTROS):
         super(RescueAgentNode, self).__init__(node_name=node_name)
         self.veh_name = rospy.get_param("~distressed_veh") #e.g. autobot27
         self.veh_id = int(''.join([x for x in self.veh_name if x.isdigit()])) # e.g. 27
-        self.activated = False
+        self.activated = False #triggers rescue
         self.autobot_info = AutobotInfo()
 
-        # self.distressType = 0 # int
+        # for open loop control
         self.current_car_cmd = Twist2DStamped() # v, omega
         self.current_car_cmd.v = 0
         self.current_car_cmd.omega = 0
         self.car_cmd_array = list()
+        self.finished_execution = False
 
-        # build map
+
+        # simpleMap for localization
         map_file_path = os.path.join(
             "/code/catkin_ws/src",
             "duckie-rescue-center/packages/rescue_center/src",
@@ -46,20 +49,15 @@ class RescueAgentNode(DTROS):
         )
         self.map = SimpleMap(map_file_path)
 
-        self.finished_execution = False
-
-        # Controller: counter
+        # For closed loop control
         self.controller_counter = 0
 
 
         # Subscriber
-        # 1. online localization
-        # self.sub_markers = rospy.Subscriber(
-        #     "/cslam_markers", MarkerArray, self.cb_localization, queue_size=30)
-        # 2. distress classification from rescue_center_node
+        # 1. distress classification from rescue_center_node
         self.sub_distress_classification = rospy.Subscriber("/{}/distress_classification".format(self.veh_name),
                 String, self.cb_rescue)
-        # 3. Autobot info from rescue_center_node
+        # 2. Autobot info from rescue_center_node
         self.sub_autobot_info = rospy.Subscriber(
             "/{}/autobot_info".format(self.veh_name), AutobotInfoMsg, self.cb_autobot_info
         )
@@ -73,7 +71,6 @@ class RescueAgentNode(DTROS):
             Twist2DStamped,
             queue_size=1,
         )
-
         # for testing
         self.pub_tst = rospy.Publisher(
             "/rescue_agents/test",
@@ -83,8 +80,9 @@ class RescueAgentNode(DTROS):
         
 
     def cb_autobot_info(self, msg):
+        '''callback function for receiving AutobotInfoMsg from rescue_center: 
+                saves msg into self.autobot_info'''
         self.pub_tst.publish("Got info for {}".format(self.veh_name))
-        # self.pub_info.publish()
         self.autobot_info.timestamp = msg.timestamp
         self.autobot_info.fsm_state = msg.fsm_state
         self.autobot_info.position = (msg.position[0], msg.position[1])
@@ -93,90 +91,30 @@ class RescueAgentNode(DTROS):
         self.autobot_info.in_rescue = msg.in_rescue 
         self.autobot_info.onRoad = msg.onRoad
         self.autobot_info.heading = msg.heading
-        # for simple loc
         self.autobot_info.headingSimple = msg.headingSimple
-        # print("Heading (Rescue Agent): {} ,{}".format(msg.headingSimple, self.autobot_info.headingSimple))
         self.autobot_info.positionSimple = (msg.positionSimple[0], msg.positionSimple[1])
+        # print("Heading (Rescue Agent): {} ,{}".format(msg.headingSimple, self.autobot_info.headingSimple))
         # print("Position (Rescue Agent): {}, {}".format(msg.positionSimple, self.autobot_info.positionSimple))
 
-
-        # # controller
-        # tol_pos = 0.05
-        # tol_heading = 10
-        # dt = 0.2
-        # C = StuckController(k_P=5, k_I=2, c1=5, c2=0.01)
-
-        # if self.activated:
-        #     current_pos = self.autobot_info.positionSimple # (x, y)
-        #     current_heading = self.autobot_info.headingSimple # degree
-        #     print("[{}]: pos = {}, phi = {}".format(self.veh_id, current_pos, current_heading))
-
-        #     # TODO: could incorporate an extra margin
-        #     desired_pos = self.map.pos_to_ideal_position(current_pos)
-        #     desired_heading = self.map.pos_to_ideal_heading(current_pos)
-        #     # Preprocessing
-        #     current_p = current_pos[1] if desired_pos[0] == current_pos[0] else current_pos[0]
-        #     desired_p = desired_pos[1] if desired_pos[0] == current_pos[0] else desired_pos[0]
-        #     current_heading += 180 if current_heading <= 0 else -180
-        #     desired_heading += 180 if desired_heading <= 0 else -180
-        #     if(abs(current_p-desired_p) > tol_pos or abs(current_heading-desired_heading) > tol_heading):
-        #         # Calculate controller output
-        #         v_out, omega_out = C.getControlOutput(current_p, current_heading, desired_p, desired_heading, v_ref=0.1, dt_last=dt)
-        #         if self.veh_id == 27:
-        #             print("[{}]: v = {}, omega = {}".format(self.veh_id, v_out, omega_out))
-        #         # Send cmd to duckiebot
-        #         msg = Twist2DStamped()
-        #         msg.v = v_out
-        #         msg.omega = omega_out
-        #         self.pub_car_cmd.publish(msg)
-
-
-        # if self.veh_id == 27:
-        #     print("[{}]: Rescue Agent {}".format(self.veh_id, self.autobot_info.positionSimple))
-
-        # print("Received Autobot info {}".format(self.autobot_info.heading))
-
-        # msg.path =  
-        # print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
-        # print(vars(info))
-        # print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
-
-    # Callback for online localization
-    # def cb_localization(self, msg):
-    #     '''Saves localization input into self.currentPose'''
-    #     # self.log("Received cslam message")
-    #     if self.activated:
-    #         markers = msg.markers
-    #         for m in markers:
-    #             if m.ns == "duckiebots":
-    #                 idx = str(m.id)
-    #                 if (idx == self.veh_id):
-    #                     self.autobot_info.update_from_marker(m)
-    #                     self.autobot_info.update_filtered(
-    #                         m.header.stamp,
-    #                         0.01,
-    #                         10,
-    #                     ) #TODO: with parameters
-    #                     # TODO: calculate pose from quaternions and save in w
-                    
-
-    # Callback for rescue trigger
     def cb_rescue(self, msg):
-        '''Activates rescue operation and stops duckiebot'''
+        '''Callback function for receiving rescue trigger from rescue-center:
+                -activates rescue operation and stops duckiebot
+                - for open loop control: calculates car_cmd
+            '''
         distress_type_num = int(msg.data)
         self.log("Received trigger. Distress Case: {}. Stopping {} now".format(distress_type_num, self.veh_name))
         if distress_type_num > 0:
-            # this should always be the case, since rescue_center_node only publishes, if rescue_class >0
+            # @Note: this should always be the case, since rescue_center_node only publishes, if rescue_class >0
             self.activated = True
             self.autobot_info.rescue_class = Distress(distress_type_num)
-            # stop duckiebot
             self.stopDuckiebot()
-            # TODO: let duckiebot pause, such that localization can get correct position
+            # for open loop control:
+            # sleep(3)
             # calculate_car_cmd
             # self.calculate_car_cmd()
     
     def calculate_car_cmd(self):
-        '''Calculates car_cmd based on distress_type and current duckiebot pose'''
+        '''For open loop control: Calculates car_cmd based on distress_type and current duckiebot pose'''
         current_pos = self.autobot_info.position # (x, y)
         current_heading = self.autobot_info.heading # degree
         self.log("Distressed at: {} with heading: {}".format(current_pos, current_heading))
@@ -202,8 +140,7 @@ class RescueAgentNode(DTROS):
             
                     self.moveBack_cmDistance(distance_backwards_cm, smoothCmd=False) #add cmds to array
                     self.turn_angle(angle_to_turn, smoothCmd=False)
-
-
+            # @Note: Those are good hard coded values for a test case:
             # for i in range(3):
             #     cmd = Twist2DStamped()
             #     cmd.v = -0.5
@@ -216,7 +153,8 @@ class RescueAgentNode(DTROS):
             #     self.car_cmd_array.append(cmd) 
 
     def moveBack_cmDistance(self, distance_inCM, smoothCmd = False, debug = False):
-        '''adds cmds to self.car_cmd_array to move back specified distance'''
+        '''adds cmds to self.car_cmd_array to move back specified distance: discretized in CM_perStep (2)
+        '''
         cmd_move = Twist2DStamped()
         if debug:
             cmd_move.v = rospy.get_param('~velocity_backwards')
@@ -246,7 +184,7 @@ class RescueAgentNode(DTROS):
                 self.car_cmd_array = self.car_cmd_array + cmd_package
     
     def turn_angle(self, angle_inDeg, smoothCmd = False):
-        '''adds cmds to self.car_cmd_array to turn specified angle'''
+        '''adds cmds to self.car_cmd_array to turn specified angle: discretized: DEGREE_PER_TURN = 24'''
         # TODO: make code look nicer
         cmd_turn = Twist2DStamped()
         cmd_turn.v = 0
@@ -344,16 +282,20 @@ class RescueAgentNode(DTROS):
 
         # publish rate
         rate = rospy.Rate(4) # 10Hz
+        k_P = float(os.environ['K_P'])
+        k_I = float(os.environ['K_I'])
+        c1 = float(os.environ['C1'])
+        c2 = float(os.environ['C2'])
+        C = StuckController(k_P=k_P, k_I=k_I, c1=c1, c2=c2)
 
-        C = StuckController(k_P=5, k_I=2, c1=5, c2=0.01)
+        # C = StuckController(k_P=5, k_I=2, c1=5, c2=0.01)
+        # C = StuckController(k_P=10, k_I=0, c1=-5, c2=1)
+
         tol_pos = 0.02
         tol_heading = 5
         dt = 0.2
 
         while not rospy.is_shutdown():
-            # self.log("Rescue agent running...")
-            # self.pub_tst.publish("Hello from autobot{}".format(self.veh_id)) 
-
             if self.activated:
                 if self.autobot_info.positionSimple[0] == 0 and self.autobot_info.positionSimple[0] == 0:
                     current_pos = self.autobot_info.position # (x, y)
@@ -371,16 +313,17 @@ class RescueAgentNode(DTROS):
                 # Preprocessing
                 current_p = current_pos[1] if desired_pos[0] == current_pos[0] else current_pos[0]
                 desired_p = desired_pos[1] if desired_pos[0] == current_pos[0] else desired_pos[0]
-                current_heading += 180 if current_heading <= 0 else -180
-                desired_heading += 180 if desired_heading <= 0 else -180
+                # make sure heading is between 0 and 360
+                current_heading += 180 #if current_heading <= 0 else -180
+                desired_heading += 180 #if desired_heading <= 0 else -180
 
                 print("current_p: {}, desired_p: {}".format(current_p, desired_p))
                 print("current_heading: {}, desired_heading: {}".format(current_heading, desired_heading))
 
-                if self.controller_counter < 20:
+                if self.controller_counter < 10:
                     if(abs(current_p-desired_p) > tol_pos or abs(current_heading-desired_heading) > tol_heading):
                         # Calculate controller output
-                        v_out, omega_out = C.getControlOutput(current_p, current_heading, desired_p, desired_heading, v_ref=0.2, dt_last=dt)
+                        v_out, omega_out = C.getControlOutput(current_p, current_heading, desired_p, desired_heading, v_ref=1, dt_last=dt)
                         if self.veh_id == 27:
                             print("[{}]: v = {}, omega = {}".format(self.veh_id, v_out, omega_out))
                         # Send cmd to duckiebot
@@ -388,6 +331,10 @@ class RescueAgentNode(DTROS):
                         msg.v = v_out
                         msg.omega = omega_out
                         self.pub_car_cmd.publish(msg)
+                        # stop car
+                        sleep(0.1)
+                        self.stopDuckiebot()
+                        sleep(1)
                     self.controller_counter += 1
                     print(self.controller_counter)
                 else:
@@ -397,8 +344,7 @@ class RescueAgentNode(DTROS):
                     self.pub_car_cmd.publish(msg)
 
                     
-                    # Sleep
-                    # sleep(dt)     
+                # For open loop control   
                 # self.calculate_car_cmd()
                 # if self.car_cmd_array:
                 #     self.current_car_cmd = self.car_cmd_array.pop(0)
@@ -421,7 +367,6 @@ class RescueAgentNode(DTROS):
                 #     msg.data = True
                 #     self.pub_everything_ok.publish(msg)
                     # rospy.set_param('~everythingOK', 'false')
-
             rate.sleep()
 
 

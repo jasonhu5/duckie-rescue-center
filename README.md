@@ -15,7 +15,7 @@ docker run --name rescue_center --network=host -it --rm -e ROS_MASTER_IP=http://
 
 For example:
 ```
-docker run --name rescue_center --network=host -it --rm -e ROS_MASTER_IP=http://192.168.1.187:11311 duckietown/duckie-rescue-center:v1-amd64
+docker run --name rescue_center --network=host -it --rm -e ROS_MASTER_IP=http://192.168.1.187:11311 -e K_P=10 -e K_I=0 -e C1=-5 -e C2=1 duckietown/duckie-rescue-center:v1-amd64
 ```
 
 For reference: [unicode characters used for map visualization](https://www.compart.com/en/unicode/block/U+2500)

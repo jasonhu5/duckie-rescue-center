@@ -34,11 +34,16 @@ class StuckController():
 
         # Convert phi_est to rad
         phi_est = phi_est/180*math.pi
+        phi_ref = phi_ref/180*math.pi
 
         # Calculate the output y
-        ref =   (self.c1 * d_ref + self.c2 * phi_ref)
-        y =     (self.c1 * d_est + self.c2 * phi_est)
-        err = ref - y
+        delta_d = d_ref - d_est
+        delta_phi = phi_ref - phi_est
+        if abs(delta_phi) > math.pi: delta_phi = -math.copysign(1.0, 2*math.pi-abs(delta_phi))
+        #ref =   (self.c1 * d_ref + self.c2 * phi_ref)
+        #y =     (self.c1 * d_est + self.c2 * phi_est)
+        err = self.c1 * delta_d + self.c2 * delta_phi
+        print("delta_d = {}, delta_phi = {}, err = c1*delta_d + c2*delta_phi = {}".format(delta_d, delta_phi, err))
 
         # PI-Controller
         C_P = self.k_P * err
