@@ -51,6 +51,7 @@ class RescueAgentNode(DTROS):
 
         # For closed loop control
         self.controller_counter = 0
+        self.v_ref = 0.3
 
 
         # Subscriber
@@ -282,14 +283,14 @@ class RescueAgentNode(DTROS):
 
         # publish rate
         rate = rospy.Rate(4) # 10Hz
-        k_P = float(os.environ['K_P'])
-        k_I = float(os.environ['K_I'])
-        c1 = float(os.environ['C1'])
-        c2 = float(os.environ['C2'])
-        C = StuckController(k_P=k_P, k_I=k_I, c1=c1, c2=c2)
+        # k_P = float(os.environ['K_P'])
+        # k_I = float(os.environ['K_I'])
+        # c1 = float(os.environ['C1'])
+        # c2 = float(os.environ['C2'])
+        # C = StuckController(k_P=k_P, k_I=k_I, c1=c1, c2=c2)
 
         # C = StuckController(k_P=5, k_I=2, c1=5, c2=0.01)
-        # C = StuckController(k_P=10, k_I=0, c1=-5, c2=1)
+        C = StuckController(k_P=6, k_I=0.1, c1=-5, c2=1)
 
         tol_pos = 0.02
         tol_heading = 5
@@ -309,24 +310,13 @@ class RescueAgentNode(DTROS):
                 desired_pos = self.map.pos_to_ideal_position(current_pos)
                 desired_heading = self.map.pos_to_ideal_heading(current_pos)
                 print("Desired: pos = {}, phi = {}".format(desired_pos, desired_heading))
-                
-                # Preprocessing
-                #current_p = current_pos[1] if desired_pos[0] == current_pos[0] else current_pos[0]
-                #desired_p = desired_pos[1] if desired_pos[0] == current_pos[0] else desired_pos[0]
-                current_p = current_pos
-                desired_p = desired_pos
-                # make sure heading is between 0 and 360
-                #current_heading += 180 #if current_heading <= 0 else -180
-                #desired_heading += 180 #if desired_heading <= 0 else -180
-
-                print("current_p: {}, desired_p: {}".format(current_p, desired_p))
                 print("current_heading: {}, desired_heading: {}".format(current_heading, desired_heading))
 
-                if self.controller_counter < 10:
+                if self.controller_counter < 6:
                     #if(abs(current_p-desired_p) > tol_pos or abs(current_heading-desired_heading) > tol_heading):   
                     if(1):    
                         # Calculate controller output
-                        v_out, omega_out = C.getControlOutput(current_p, current_heading, desired_p, desired_heading, v_ref=0.3, dt_last=dt)
+                        v_out, omega_out = C.getControlOutput(current_pos, current_heading, desired_pos, desired_heading, v_ref=self.v_ref, dt_last=dt)
                         if self.veh_id == 27:
                             print("[{}]: v = {}, omega = {}".format(self.veh_id, v_out, omega_out))
                         # Send cmd to duckiebot
@@ -340,6 +330,7 @@ class RescueAgentNode(DTROS):
                         sleep(1)
                     self.controller_counter += 1
                     print(self.controller_counter)
+                    self.v_ref - 0.02
                 else:
                     msg = Twist2DStamped()
                     msg.v = 0

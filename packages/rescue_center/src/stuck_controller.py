@@ -8,22 +8,20 @@ class StuckController():
 
     def __init__(self, k_P, k_I, c1, c2):
 
-        # C matrix of LTI system
-        self.c1 = c1
-        self.c2 = c2
+        # C matrix of LTI system (nicely working parameters in comments)
+        self.c1 = c1 # -5.0
+        self.c2 = c2 # 1.0
 
         # Gains for controller
-        self.k_P = k_P
-        self.k_I = k_I
+        self.k_P = k_P # 6.0
+        self.k_I = k_I # 0.1
 
         # Variable for integral
         self.C_I = 0
 
-    # Inputs:   d_est   Estimation of distance from lane center (positive when
-    #                   offset to the left of driving direction) [m]
-    #           phi_est Estimation of angle of bot (positive when angle to the
-    #                   left of driving direction) [deg]
-    #           d_ref   Reference of d (d_ref = 0) [m]
+    # Inputs:   d_est   Estimation of position x, y[m]
+    #           phi_est Estimation of angle of bot [deg]
+    #           d_ref   Reference position [m]
     #           v_ref   Reference of velocity [m/s]
     #           dt_last Time it took from last processing to current [s]
 
@@ -36,16 +34,13 @@ class StuckController():
         phi_est = phi_est/180*math.pi
         phi_ref = phi_ref/180*math.pi
 
-        # Calculate the output y
+        # Calculate the output error ref - y and account for sign
         delta_d = math.sqrt((d_ref[0] - d_est[0])**2 + (d_ref[1] - d_est[1])**2)
         if sum(d_ref) < sum(d_est): delta_d *= -1
-        #delta_d = d_ref - d_est
         delta_phi = phi_ref - phi_est
         if abs(delta_phi) > math.pi: delta_phi = -math.copysign(1.0, 2*math.pi-abs(delta_phi))
-        #ref =   (self.c1 * d_ref + self.c2 * phi_ref)
-        #y =     (self.c1 * d_est + self.c2 * phi_est)
         err = self.c1 * delta_d + self.c2 * delta_phi
-        print("delta_d = {}, delta_phi = {}, err = c1*delta_d + c2*delta_phi = {}".format(delta_d, delta_phi, err))
+        print("delta_d = {}, delta_phi = {}, err = {}".format(delta_d, delta_phi, err))
 
         # PI-Controller
         C_P = self.k_P * err
