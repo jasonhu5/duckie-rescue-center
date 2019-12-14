@@ -13,8 +13,10 @@ class AutobotInfo():
         self.timestamp = None
         self.fsm_state = None
         self.position = (None, None)
+        self.positionSimple = (None, None)
         self.filtered = (float('inf'), float('inf'))
         self.heading = None
+        self.headingSimple = None
         self.last_moved = None
         self.in_rescue = False
         self.onRoad = True

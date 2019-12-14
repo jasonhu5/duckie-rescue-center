@@ -6,7 +6,7 @@ class StuckController():
     # This is a modified version of the lane following controller
     # used for rescuing a bot from a stuck with infrastructure case
 
-    def __init__(self, k_P, k_I, u_sat, k_t, c1, c2):
+    def __init__(self, k_P, k_I, c1, c2):
 
         # C matrix of LTI system
         self.c1 = c1
@@ -16,20 +16,14 @@ class StuckController():
         self.k_P = k_P
         self.k_I = k_I
 
-        # Saturation of motors [rad/s]
-        self.u_sat = u_sat
-
-        # Feedback gain for anti-windup
-        self.k_t = k_t
-
         # Variable for integral
         self.C_I = 0
 
     # Inputs:   d_est   Estimation of distance from lane center (positive when
     #                   offset to the left of driving direction) [m]
     #           phi_est Estimation of angle of bot (positive when angle to the
-    #                   left of driving direction) [rad]
-    #           d_ref   Reference of d (for lane following, d_ref = 0) [m]
+    #                   left of driving direction) [deg]
+    #           d_ref   Reference of d (d_ref = 0) [m]
     #           v_ref   Reference of velocity [m/s]
     #           dt_last Time it took from last processing to current [s]
 
@@ -37,6 +31,9 @@ class StuckController():
     #           omega_out   angular velocity of Duckiebot [rad/s]
 
     def getControlOutput(self, d_est, phi_est, d_ref, phi_ref, v_ref, dt_last):
+
+        # Convert phi_est to rad
+        phi_est = phi_est/180*math.pi
 
         # Calculate the output y
         ref =   (self.c1 * d_ref + self.c2 * phi_ref)
@@ -58,7 +55,5 @@ class StuckController():
     def updateParams(self, k_P, k_I, u_sat, k_t, c1, c2):
         self.k_P = k_P
         self.k_I = k_I
-        self.u_sat = u_sat
-        self.k_t = k_t
         self.c1 = c1
         self.c2 = c2

@@ -48,6 +48,9 @@ class RescueAgentNode(DTROS):
 
         self.finished_execution = False
 
+        # Controller: counter
+        self.controller_counter = 0
+
 
         # Subscriber
         # 1. online localization
@@ -90,6 +93,47 @@ class RescueAgentNode(DTROS):
         self.autobot_info.in_rescue = msg.in_rescue 
         self.autobot_info.onRoad = msg.onRoad
         self.autobot_info.heading = msg.heading
+        # for simple loc
+        self.autobot_info.headingSimple = msg.headingSimple
+        # print("Heading (Rescue Agent): {} ,{}".format(msg.headingSimple, self.autobot_info.headingSimple))
+        self.autobot_info.positionSimple = (msg.positionSimple[0], msg.positionSimple[1])
+        # print("Position (Rescue Agent): {}, {}".format(msg.positionSimple, self.autobot_info.positionSimple))
+
+
+        # # controller
+        # tol_pos = 0.05
+        # tol_heading = 10
+        # dt = 0.2
+        # C = StuckController(k_P=5, k_I=2, c1=5, c2=0.01)
+
+        # if self.activated:
+        #     current_pos = self.autobot_info.positionSimple # (x, y)
+        #     current_heading = self.autobot_info.headingSimple # degree
+        #     print("[{}]: pos = {}, phi = {}".format(self.veh_id, current_pos, current_heading))
+
+        #     # TODO: could incorporate an extra margin
+        #     desired_pos = self.map.pos_to_ideal_position(current_pos)
+        #     desired_heading = self.map.pos_to_ideal_heading(current_pos)
+        #     # Preprocessing
+        #     current_p = current_pos[1] if desired_pos[0] == current_pos[0] else current_pos[0]
+        #     desired_p = desired_pos[1] if desired_pos[0] == current_pos[0] else desired_pos[0]
+        #     current_heading += 180 if current_heading <= 0 else -180
+        #     desired_heading += 180 if desired_heading <= 0 else -180
+        #     if(abs(current_p-desired_p) > tol_pos or abs(current_heading-desired_heading) > tol_heading):
+        #         # Calculate controller output
+        #         v_out, omega_out = C.getControlOutput(current_p, current_heading, desired_p, desired_heading, v_ref=0.1, dt_last=dt)
+        #         if self.veh_id == 27:
+        #             print("[{}]: v = {}, omega = {}".format(self.veh_id, v_out, omega_out))
+        #         # Send cmd to duckiebot
+        #         msg = Twist2DStamped()
+        #         msg.v = v_out
+        #         msg.omega = omega_out
+        #         self.pub_car_cmd.publish(msg)
+
+
+        # if self.veh_id == 27:
+        #     print("[{}]: Rescue Agent {}".format(self.veh_id, self.autobot_info.positionSimple))
+
         # print("Received Autobot info {}".format(self.autobot_info.heading))
 
         # msg.path =  
@@ -129,7 +173,7 @@ class RescueAgentNode(DTROS):
             self.stopDuckiebot()
             # TODO: let duckiebot pause, such that localization can get correct position
             # calculate_car_cmd
-            self.calculate_car_cmd()
+            # self.calculate_car_cmd()
     
     def calculate_car_cmd(self):
         '''Calculates car_cmd based on distress_type and current duckiebot pose'''
@@ -238,19 +282,21 @@ class RescueAgentNode(DTROS):
         tol_heading = 10
         dt = 0.2
 
-        C = StuckController(k_P=0.5, k_I=0.8, u_sat=0.3, k_t=0.5, c1=1, c2=1)
+        C = StuckController(k_P=5, k_I=2, c1=5, c2=0.01)
 
         current_pos = self.autobot_info.position # (x, y)
         current_heading = self.autobot_info.heading # degree
-        # TODO: could incorperate an extra margin
+        # TODO: could incorporate an extra margin
         desired_pos = self.map.pos_to_ideal_position(current_pos)
         desired_heading = self.map.pos_to_ideal_heading(current_pos)
 
-        while(current_pos-desired_pos > tol_pos or current_heading-desired_heading > tol_heading):
+        while(abs(current_pos-desired_pos) > tol_pos or abs(current_heading-desired_heading) > tol_heading):
             # Calculate controller output
             current_p = current_pos[1] if desired_pos[0] == current_pos[0] else current_pos[0]
             desired_p = desired_pos[1] if desired_pos[0] == current_pos[0] else desired_pos[0]
-            v_out, omega_out = C.getControlOutput(current_p, current_heading, desired_p, desired_heading, v_ref=0.05, dt_last=dt)
+            current_heading += 180 if current_heading <= 0 else -180
+            desired_heading += 180 if desired_heading <= 0 else -180
+            v_out, omega_out = C.getControlOutput(current_p, current_heading, desired_p, desired_heading, v_ref=0.4, dt_last=dt)
             # Send cmd to duckiebot
             msg = Twist2DStamped()
             msg.v = v_out
@@ -263,6 +309,12 @@ class RescueAgentNode(DTROS):
             current_heading = self.autobot_info.heading # degree
             desired_pos = self.map.pos_to_ideal_position(current_pos)
             desired_heading = self.map.pos_to_ideal_heading(current_pos)
+        
+        # Stop duckiebot
+        msg = Twist2DStamped()
+        msg.v = 0
+        msg.omega = 0
+        self.pub_car_cmd.publish(msg)
 
 
     def finishedRescue(self):
@@ -293,32 +345,81 @@ class RescueAgentNode(DTROS):
         # publish rate
         rate = rospy.Rate(4) # 10Hz
 
+        C = StuckController(k_P=5, k_I=2, c1=5, c2=0.01)
+        tol_pos = 0.02
+        tol_heading = 5
+        dt = 0.2
+
         while not rospy.is_shutdown():
             # self.log("Rescue agent running...")
             # self.pub_tst.publish("Hello from autobot{}".format(self.veh_id)) 
 
             if self.activated:
-                # self.calculate_car_cmd()
-                if self.car_cmd_array:
-                    self.current_car_cmd = self.car_cmd_array.pop(0)
-                    self.pub_car_cmd.publish(self.current_car_cmd)
-                    # self.finished_execution = False
-                    self.log("Applying v = {}, w = {}".format(self.current_car_cmd.v, self.current_car_cmd.omega))
-                    # if not self.car_cmd_array:
-                    #     # just popped out last one
-                    #     self.finished_execution = True
+                if self.autobot_info.positionSimple[0] == 0 and self.autobot_info.positionSimple[0] == 0:
+                    current_pos = self.autobot_info.position # (x, y)
+                    current_heading = self.autobot_info.heading # degree
                 else:
-                    self.log("Finished applying commands")
-                    self.stopDuckiebot()
-                    # self.calculate_car_cmd()
+                    current_pos = self.autobot_info.positionSimple # (x, y)
+                    current_heading = self.autobot_info.headingSimple # degree
+                print("Current: [{}]: pos = {}, phi = {}".format(self.veh_id, current_pos, current_heading))
 
-                if self.finishedRescue():
-                    self.log("Finished Rescue")
-                    self.activated = False
-                    self.autobot_info.rescue_class = Distress.NORMAL_OPERATION
-                    msg = BoolStamped()
-                    msg.data = True
-                    self.pub_everything_ok.publish(msg)
+                # TODO: could incorporate an extra margin
+                desired_pos = self.map.pos_to_ideal_position(current_pos)
+                desired_heading = self.map.pos_to_ideal_heading(current_pos)
+                print("Desired: pos = {}, phi = {}".format(desired_pos, desired_heading))
+                
+                # Preprocessing
+                current_p = current_pos[1] if desired_pos[0] == current_pos[0] else current_pos[0]
+                desired_p = desired_pos[1] if desired_pos[0] == current_pos[0] else desired_pos[0]
+                current_heading += 180 if current_heading <= 0 else -180
+                desired_heading += 180 if desired_heading <= 0 else -180
+
+                print("current_p: {}, desired_p: {}".format(current_p, desired_p))
+                print("current_heading: {}, desired_heading: {}".format(current_heading, desired_heading))
+
+                if self.controller_counter < 20:
+                    if(abs(current_p-desired_p) > tol_pos or abs(current_heading-desired_heading) > tol_heading):
+                        # Calculate controller output
+                        v_out, omega_out = C.getControlOutput(current_p, current_heading, desired_p, desired_heading, v_ref=0.2, dt_last=dt)
+                        if self.veh_id == 27:
+                            print("[{}]: v = {}, omega = {}".format(self.veh_id, v_out, omega_out))
+                        # Send cmd to duckiebot
+                        msg = Twist2DStamped()
+                        msg.v = v_out
+                        msg.omega = omega_out
+                        self.pub_car_cmd.publish(msg)
+                    self.controller_counter += 1
+                    print(self.controller_counter)
+                else:
+                    msg = Twist2DStamped()
+                    msg.v = 0
+                    msg.omega = 0
+                    self.pub_car_cmd.publish(msg)
+
+                    
+                    # Sleep
+                    # sleep(dt)     
+                # self.calculate_car_cmd()
+                # if self.car_cmd_array:
+                #     self.current_car_cmd = self.car_cmd_array.pop(0)
+                #     self.pub_car_cmd.publish(self.current_car_cmd)
+                #     # self.finished_execution = False
+                #     self.log("Applying v = {}, w = {}".format(self.current_car_cmd.v, self.current_car_cmd.omega))
+                #     # if not self.car_cmd_array:
+                #     #     # just popped out last one
+                #     #     self.finished_execution = True
+                # else:
+                #     self.log("Finished applying commands")
+                #     self.stopDuckiebot()
+                #     # self.calculate_car_cmd()
+
+                # if self.finishedRescue():
+                #     self.log("Finished Rescue")
+                #     self.activated = False
+                #     self.autobot_info.rescue_class = Distress.NORMAL_OPERATION
+                #     msg = BoolStamped()
+                #     msg.data = True
+                #     self.pub_everything_ok.publish(msg)
                     # rospy.set_param('~everythingOK', 'false')
 
             rate.sleep()

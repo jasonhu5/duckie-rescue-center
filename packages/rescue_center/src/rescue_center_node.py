@@ -5,7 +5,7 @@ import rospy
 import math
 import subprocess
 from duckietown import DTROS
-from std_msgs.msg import String
+from std_msgs.msg import String, Float64MultiArray
 from duckietown_msgs.msg import BoolStamped, Twist2DStamped, FSMState
 from visualization_msgs.msg import Marker, MarkerArray
 from simple_map import SimpleMap
@@ -37,8 +37,9 @@ class RescueTriggerNode(DTROS):
         # Subscribe to topics online localization
         self.sub_markers = rospy.Subscriber(
             "/cslam_markers", MarkerArray, self.cbLocalization, queue_size=30)
-        # for path
-
+        # for simple-localization
+        self.sub_simpleLoc = rospy.Subscriber(
+            "/simple_loc_bots", Float64MultiArray, self.cbSimpleLoc, queue_size=30)
 
         # Prepare for bot-wise topics
         self.pub_trigger = dict()
@@ -46,6 +47,7 @@ class RescueTriggerNode(DTROS):
         self.sub_fsm_states = dict()
         self.sub_everythingOk = dict()
         self.sub_path = dict()
+        self.pub_autobot_info = dict()
 
         # build simpleMap
         # TODO: pull a duckietownworld fork in container
@@ -98,13 +100,29 @@ class RescueTriggerNode(DTROS):
             "/movable_path_autobot{}".format(veh_id), Path, self.cbPath, callback_args=veh_id, queue_size=30)
 
         # test
-        self.pub_autobot_info = rospy.Publisher(
+        self.pub_autobot_info[veh_id] = rospy.Publisher(
             "/autobot{}/autobot_info".format(veh_id),
             AutobotInfoMsg,
             queue_size=5,
         )
 
 
+    def cbSimpleLoc(self, msg):
+        # TODO: Jason will change the simple localization output from tag id to autobot id
+        if (msg.data[0] == 426):
+            veh_id = 27
+        elif (msg.data[0] == 425):
+            veh_id = 26
+        else:
+            veh_id = msg.data[0]
+        
+        # veh_id = int(msg.data[0])
+
+        self.id_dict[veh_id].positionSimple = (msg.data[1], msg.data[2])
+        self.id_dict[veh_id].headingSimple = msg.data[3] 
+        self.pub_autobot_info[veh_id].publish(self.autobotInfo2Msg(self.id_dict[veh_id]))
+        # print("[{}] Received simple localization: ({}, {}, {})".format(veh_id, msg.data[1], msg.data[2], msg.data[3]))
+        print("[{}] Received simple localization: ({}, {})".format(veh_id, self.id_dict[veh_id].positionSimple, self.id_dict[veh_id].headingSimple))
 
     def cbPath(self, msg, veh_id):
         self.id_dict[veh_id].updatePath(msg)
@@ -124,7 +142,7 @@ class RescueTriggerNode(DTROS):
             msg.timestamp = info.timestamp
         if info.fsm_state:
             msg.fsm_state = info.fsm_state
-        if info.position:
+        if info.position[0]:
             msg.position = [info.position[0], info.position[1]]
         if info.filtered:
             msg.filtered = [info.filtered[0], info.filtered[1]]
@@ -139,6 +157,11 @@ class RescueTriggerNode(DTROS):
             msg.rescue_class = info.rescue_class.value 
         if info.heading:
             msg.heading = info.heading
+        # for simpleLoc:
+        if info.positionSimple[0]:
+            msg.positionSimple = [info.positionSimple[0], info.positionSimple[1]]
+        if info.headingSimple:
+            msg.headingSimple = info.headingSimple
         # msg.path =  
         return msg
 
@@ -168,7 +191,7 @@ class RescueTriggerNode(DTROS):
 
             # Store position from localization system in AutoboInfo()
             self.id_dict[idx].update_from_marker(m)
-            print("[{}] heading: {}".format(idx, self.id_dict[idx].heading))
+            # print("[{}] heading: {}".format(idx, self.id_dict[idx].heading))
             # Filter position and update last_moved time stamp
             self.id_dict[idx].update_filtered(
                 m.header.stamp,
@@ -176,7 +199,7 @@ class RescueTriggerNode(DTROS):
                 self.parameters['~avg_window'],
             )
              # publish autobot_info to rescue_agent
-            self.pub_autobot_info.publish(self.autobotInfo2Msg(self.id_dict[idx]))
+            self.pub_autobot_info[idx].publish(self.autobotInfo2Msg(self.id_dict[idx]))
 
             
             if self.id_dict[idx].in_rescue:
@@ -191,7 +214,7 @@ class RescueTriggerNode(DTROS):
                 print("[{}]: time diff[s]: {}".format(idx, time_diff))
                 print("[{}] ({}) onRoad {}".format(idx, self.id_dict[idx].position, self.id_dict[idx].onRoad))
 
-            if rescue_class.value != 0:
+            if rescue_class.value != 0 and idx == 27:
                 # publish rescue_class
                 self.log(
                     "Duckiebot [{}] in distress <{}>".format(idx, rescue_class))
