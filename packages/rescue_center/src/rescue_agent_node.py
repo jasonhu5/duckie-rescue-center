@@ -330,7 +330,7 @@ class RescueAgentNode(DTROS):
                         sleep(1)
                     self.controller_counter += 1
                     print(self.controller_counter)
-                    self.v_ref - 0.02
+                    # self.v_ref - 0.02
                 else:
                     msg = Twist2DStamped()
                     msg.v = 0
