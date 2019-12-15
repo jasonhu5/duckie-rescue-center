@@ -54,6 +54,7 @@ class RescueAgentNode(DTROS):
         self.v_ref = 0.3
         self.desired_pos = None
         self.desired_heading = None
+        self.fixDesired = False #used in curves
 
         # Subscriber
         # 1. distress classification from rescue_center_node
@@ -97,8 +98,6 @@ class RescueAgentNode(DTROS):
         self.autobot_info.headingSimple = msg.headingSimple
         self.autobot_info.positionSimple = (
             msg.positionSimple[0], msg.positionSimple[1])
-        # print("Heading (Rescue Agent): {} ,{}".format(msg.headingSimple, self.autobot_info.headingSimple))
-        # print("Position (Rescue Agent): {}, {}".format(msg.positionSimple, self.autobot_info.positionSimple))
 
     def cb_rescue(self, msg):
         '''Callback function for receiving rescue trigger from rescue-center:
@@ -231,57 +230,17 @@ class RescueAgentNode(DTROS):
             for i in range(num_packages):
                 self.car_cmd_array = self.car_cmd_array + cmd_package
 
-    def rescue_operation_CL(self):
-        tol_pos = 0.05
-        tol_heading = 10
-        dt = 0.2
-
-        C = StuckController(k_P=5, k_I=2, c1=5, c2=0.01)
-
-        current_pos = self.autobot_info.position  # (x, y)
-        current_heading = self.autobot_info.heading  # degree
-        # TODO: could incorporate an extra margin
-        desired_pos = self.map.pos_to_ideal_position(current_pos)
-        desired_heading = self.map.pos_to_ideal_heading(current_pos)
-
-        while(abs(current_pos-desired_pos) > tol_pos or abs(current_heading-desired_heading) > tol_heading):
-            # Calculate controller output
-            current_p = current_pos[1] if desired_pos[0] == current_pos[0] else current_pos[0]
-            desired_p = desired_pos[1] if desired_pos[0] == current_pos[0] else desired_pos[0]
-            current_heading += 180 if current_heading <= 0 else -180
-            desired_heading += 180 if desired_heading <= 0 else -180
-            v_out, omega_out = C.getControlOutput(
-                current_p, current_heading, desired_p, desired_heading, v_ref=0.4, dt_last=dt)
-            # Send cmd to duckiebot
-            msg = Twist2DStamped()
-            msg.v = v_out
-            msg.omega = omega_out
-            self.pub_car_cmd.publish(msg)
-            # Sleep
-            sleep(dt)
-            # Update measurements
-            current_pos = self.autobot_info.position  # (x, y)
-            current_heading = self.autobot_info.heading  # degree
-            desired_pos = self.map.pos_to_ideal_position(current_pos)
-            desired_heading = self.map.pos_to_ideal_heading(current_pos)
-
-        # Stop duckiebot
-        msg = Twist2DStamped()
-        msg.v = 0
-        msg.omega = 0
-        self.pub_car_cmd.publish(msg)
-
     def readyForLF(self, recalculateDesired=True):
         '''Checks, if the rescue operation has been finished based on current duckiebot pose (similar to classificiation)'''
         # TODO: implement actual logic, this will be a different classifier
         debug_param = rospy.get_param('~everythingOK')
         if debug_param:
             return True
-        
-        #check,if duckiebot is back in lane
+
+        # check,if duckiebot is back in lane
         current_pos = self.autobot_info.positionSimple  # (x, y)
         current_heading = self.autobot_info.headingSimple  # degree
-        
+
         if recalculateDesired:
             desired_pos = self.map.pos_to_ideal_position(current_pos)
             desired_heading = self.map.pos_to_ideal_heading(desired_pos)
@@ -292,9 +251,10 @@ class RescueAgentNode(DTROS):
         tol_position = self.map.tile_size/4  # within the lane
         delta_phi = abs(current_heading-desired_heading)
         delta_phi = min(delta_phi, 360-delta_phi)
-        delta_d = math.sqrt((desired_pos[0] - current_pos[0])**2 + (desired_pos[1] - current_pos[1])**2)
+        delta_d = math.sqrt(
+            (desired_pos[0] - current_pos[0])**2 + (desired_pos[1] - current_pos[1])**2)
         print("delta_phi: {}, delta_d: {}".format(delta_phi, delta_d))
-        if delta_d < tol_position and  delta_phi< tol_angle:
+        if delta_d < tol_position and delta_phi < tol_angle:
             return True
 
         return False
@@ -342,10 +302,25 @@ class RescueAgentNode(DTROS):
                     self.veh_id, current_pos, current_heading))
 
                 # TODO: could incorporate an extra margin
-                desired_pos = self.map.pos_to_ideal_position(current_pos, heading=current_heading)
+                if 
+                desired_pos = self.map.pos_to_ideal_position(
+                    current_pos, heading=current_heading)
+                if desired_pos == None:
+                    # No good rescue point found
+                    print('no good point found! Going backwards now...')
+                    msg = Twist2DStamped()
+                    msg = Twist2DStamped()
+                    msg.v = -self.v_ref
+                    msg.omega = 0
+                    self.pub_car_cmd.publish(msg)
+                    # stop car
+                    sleep(t_execution)
+                    self.stopDuckiebot()
+                    sleep(t_stop)
+                    continue
                 # Check, if at intersection: 4-way or 3-way:
-                if desired_pos == None: 
-                    print("at Intersection")
+                if desired_pos == float('inf'):
+                    print("at Intersection, check, if ready for LF")
                     self.stopDuckiebot()
                     if self.readyForLF(recalculateDesired=False):
                         print("[{}] Ready for LF".format(self.veh_id))
@@ -354,20 +329,22 @@ class RescueAgentNode(DTROS):
                         msg = BoolStamped()
                         msg.data = True
                         self.pub_everything_ok.publish(msg)
-                        # TODO: implement else case: go forward                        
+                        self.controller_counter = 0
+                        # TODO: implement else case: go forward
                     continue
-                else:
-                    self.desired_pos = desired_pos
-                    desired_heading = self.map.pos_to_ideal_heading(desired_pos)
-                    self.desired_heading = desired_heading
-                    print("Desired: pos = {}, phi = {}".format(
-                        desired_pos, desired_heading))
-                    print("current_heading: {}, desired_heading: {}".format(
-                        current_heading, desired_heading))
+                self.desired_pos = desired_pos
+                print("desired_pos (used to calculate heading)", desired_pos)
+                desired_heading = self.map.pos_to_ideal_heading(
+                    desired_pos)
+                self.desired_heading = desired_heading
+                print("Desired: pos = {}, phi = {}".format(
+                    desired_pos, desired_heading))
+                print("current_heading: {}, desired_heading: {}".format(
+                    current_heading, desired_heading))
 
                 if self.controller_counter < 6:
                     # if(abs(current_p-desired_p) > tol_pos or abs(current_heading-desired_heading) > tol_heading):
-                    if(1):                            
+                    if(1):
                         # Calculate controller output
                         v_out, omega_out = C.getControlOutput(
                             current_pos, current_heading, desired_pos, desired_heading, v_ref=self.v_ref, dt_last=dt)
@@ -385,7 +362,6 @@ class RescueAgentNode(DTROS):
                         sleep(t_stop)
                     self.controller_counter += 1
                     print(self.controller_counter)
-                    # self.v_ref - 0.02
                 else:
                     print("[{}] Finished rescue attempt. Check, if ok...".format(
                         self.veh_id))

@@ -143,6 +143,22 @@ class SimpleMap():
 
     ''' --- POSITIONING FUNCTIONS --- '''
 
+    def pos_to_semantic(self, position):
+        """Method to give the tile type of a position
+
+        Args:
+            position: tuple of (x,y) position on map in [m]
+
+        Returns:
+            String containing the type of the tily
+
+        """
+        if self.get_tile(position) is not None:
+            tile_x, tile_y = self.get_tile(position)
+            return self.map_sem[(tile_x, tile_y)].type
+        else:
+            return None
+
     def position_on_map(self, position, subtile=False):
         """Method to make sense of a raw position on the map
 
@@ -239,10 +255,13 @@ class SimpleMap():
         """Method to calculate the "should-be" position of the duckiebot
         at a given (real) position
 
-        Note:
-            It only changes the lateral coordinate to be in the middle
-            between the white and the yellow line (radial in curves,
-            hence two new coordinates)
+        Notes:
+            - For straights, it only changes the lateral coordinate to be
+            in the middle between the white and the yellow line
+            - In curves it is a radial distance, hence two new coordinates
+            - For asphalt it performs a grid search in reverse direction
+            up to a tile length in distance to find the best coordinates
+            using a cost function penalizing distance and rotations
 
         Args:
             position: tuple of (x,y) position on map in [m]
@@ -250,7 +269,8 @@ class SimpleMap():
 
         Returns:
             A position tuple (x,y) in [m] in localization coordinate system
-            None for positions on 4/way or 3/way
+            - inf for positions on 4/way or 3/way
+            - None if it cannot find a suitable exit (=surrounded by curves)
 
         """
         if self.get_tile(position) is not None:
@@ -259,7 +279,8 @@ class SimpleMap():
             return None
         tile = self.map_sem[(tile_x, tile_y)]
         coordinates = None
-        if tile.type == "straight":
+        if tile.type == "4way" or tile.type == "3way": coordinates = float('inf')
+        elif tile.type == "straight":
             if tile.boarders == ["N", "S"]:
                 lane = round((position[0] % self.tile_size)/self.tile_size)
                 coordinates = ((tile_x+0.25+lane/2)*self.tile_size, position[1])
@@ -283,10 +304,11 @@ class SimpleMap():
             coordinates = (coord_x, coord_y)
         elif tile.type == "asphalt":
             if heading is None: return None
-            cost = float('inf')
             heading = int(heading)
+            cost = float('inf')
             # calculate current "reverse straight direction"
             rev_h = self.normalize_angle(heading+180, reverse=True)
+            print("DEGUB: Reverse: ", rev_h)
             # loop through all "reverse direction +/- 90deg"
             for h in range(heading+90, heading+270):
                 h = self.normalize_angle(h, reverse=True)
@@ -294,10 +316,13 @@ class SimpleMap():
                 for d in np.arange(0, self.tile_size, self.tile_size/10):
                     # calculate point and find ideal pos and heading
                     exit_dir = (position[0]+d*math.cos(h), position[1]+d*math.sin(h))
-                    tile_check = self.get_tile(exit_dir)
+                    if not self.get_tile(exit_dir): continue
                     ideal_pos = self.pos_to_ideal_position(exit_dir)
-                    ideal_heading = self.pos_to_ideal_heading(exit_dir)
                     if ideal_pos is not None:
+                        ideal_heading = self.pos_to_ideal_heading(exit_dir)
+                        if ideal_heading is None: continue
+                        ideal_heading = ideal_heading*math.pi/180
+                        #print("Cost: ", self.exit_cost(ideal_pos, position, rev_h, h, ideal_heading))
                         # Update cost and coordinates if better solution is found
                         if self.exit_cost(ideal_pos, position, rev_h, h, ideal_heading) < cost:
                             coordinates = ideal_pos
@@ -317,8 +342,8 @@ class SimpleMap():
         i,j = index
         if i*j >= 0 and i < self.map_bin.shape[0] and j < self.map_bin.shape[1]:
             return True
-        else:
-            print("Position not on map"); return False
+        # else:
+        #     print("Position not on map"); return False
 
 
 
@@ -376,7 +401,7 @@ class SimpleMap():
 
     def get_tile(self, position):
         # returns the indices of the tile from current position
-        if position is None: return None
+        if position is None or not isinstance(position, tuple): return None
         tile_x = int(math.floor(position[0]/self.tile_size))
         tile_y = int(math.floor(position[1]/self.tile_size))
         if not self.try_tile_idx((tile_x, tile_y)): return None
@@ -393,11 +418,11 @@ class SimpleMap():
             distance = math.sqrt((exit_pos[0] - current_pos[0])**2
                                + (exit_pos[1] - current_pos[1])**2)
             # rotation effort to reverse exit to direction
-            first_rotation = abs(exit_angle - reverse_angle)
+            first_rotation = min(abs(exit_angle - reverse_angle), 2*math.pi-abs(exit_angle - reverse_angle))
             # rotation effort to turn to ideal angle after exit
-            second_rotation = abs(ideal_angle - exit_angle)
-            # Penalize distance and rotations (decent parameters 10, 0.5, 0.5)
-            cost = distance*10 + first_rotation*0.5 + second_rotation*0.5
+            second_rotation = min(abs(ideal_angle - exit_angle), 2*math.pi-abs(ideal_angle - exit_angle))
+            # Penalize distance and rotations (decent parameters 20, 0.5, 0.5)
+            cost = distance*20 + first_rotation*0.5 + second_rotation*0.5
         return cost
 
     def normalize_angle(self, angle, reverse=False):
