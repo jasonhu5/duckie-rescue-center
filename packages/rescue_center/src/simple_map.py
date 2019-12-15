@@ -290,6 +290,9 @@ class SimpleMap():
         elif tile.type == "curve":
             center_x = tile.centers[0][0]
             center_y = tile.centers[0][1]
+            # convert center from binary to {-1;1} for atan2 calculations
+            curve_sign_x = 2*(center_x-0.5)
+            curve_sign_y = 2*(center_y-0.5)
             # calculate distance from center
             x = abs(center_x*self.tile_size - (position[0] % self.tile_size))
             y = abs(center_y*self.tile_size - (position[1] % self.tile_size))
@@ -299,16 +302,16 @@ class SimpleMap():
             base_x = (tile_x + center_x)*self.tile_size
             base_y = (tile_y + center_y)*self.tile_size
             distance = math.sqrt(x**2+y**2)
-            coord_x = base_x + x * ((0.25+lane/2)*self.tile_size)/distance
-            coord_y = base_y + y * ((0.25+lane/2)*self.tile_size)/distance
+            coord_x = base_x - curve_sign_x * x * ((0.25+lane/2)*self.tile_size)/distance
+            coord_y = base_y - curve_sign_y * y * ((0.25+lane/2)*self.tile_size)/distance
             coordinates = (coord_x, coord_y)
+            print("Calculated curve pos for base", base_x, base_y)
         elif tile.type == "asphalt":
             if heading is None: return None
             heading = int(heading)
             cost = float('inf')
             # calculate current "reverse straight direction"
             rev_h = self.normalize_angle(heading+180, reverse=True)
-            print("DEGUB: Reverse: ", rev_h)
             # loop through all "reverse direction +/- 90deg"
             for h in range(heading+90, heading+270):
                 h = self.normalize_angle(h, reverse=True)

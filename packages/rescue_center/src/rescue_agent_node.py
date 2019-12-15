@@ -300,6 +300,11 @@ class RescueAgentNode(DTROS):
                     current_heading = self.autobot_info.headingSimple  # degree
                 print("Current: [{}]: pos = {}, phi = {}".format(
                     self.veh_id, current_pos, current_heading))
+                
+                # on a curve: fix desired
+                tile_sem = self.map.pos_to_semantic(current_pos)
+                if (tile_sem == "curve"):
+                    print("[{}] on a curve: fixing desired")
 
                 # TODO: could incorporate an extra margin
                 desired_pos = self.map.pos_to_ideal_position(
