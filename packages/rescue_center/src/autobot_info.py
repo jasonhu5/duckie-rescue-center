@@ -18,6 +18,7 @@ class AutobotInfo():
         self.heading = None
         self.headingSimple = None
         self.last_moved = None
+        self.last_movedSimple = None
         self.in_rescue = False
         self.onRoad = True
         self.rescue_class = Distress.NORMAL_OPERATION

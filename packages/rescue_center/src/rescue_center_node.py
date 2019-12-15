@@ -120,6 +120,7 @@ class RescueTriggerNode(DTROS):
 
         self.id_dict[veh_id].positionSimple = (msg.data[1], msg.data[2])
         self.id_dict[veh_id].headingSimple = msg.data[3] 
+        self.id_dict[veh_id].last_movedSimple = msg.data[4] # in s
         self.pub_autobot_info[veh_id].publish(self.autobotInfo2Msg(self.id_dict[veh_id]))
         # print("[{}] Received simple localization: ({}, {}, {})".format(veh_id, msg.data[1], msg.data[2], msg.data[3]))
         # print("[{}] Received simple localization: ({}, {})".format(veh_id, self.id_dict[veh_id].positionSimple, self.id_dict[veh_id].headingSimple))
@@ -206,7 +207,10 @@ class RescueTriggerNode(DTROS):
                 continue
             # If duckiebot is not in rescue, check classifier
             self.currentTime = m.header.stamp
-            time_diff = self.currentTime.to_sec()-self.id_dict[idx].last_moved.to_sec()
+            if self.id_dict[idx].last_movedSimple:
+                time_diff = self.currentTime.to_sec()-max(self.id_dict[idx].last_moved.to_sec(), self.id_dict[idx].last_movedSimple)
+            else:
+                time_diff = self.currentTime.to_sec()-self.id_dict[idx].last_moved.to_sec()
             rescue_class = self.id_dict[idx].classifier(time_diff, self.map)
             self.id_dict[idx].rescue_class = rescue_class
             # For debugging

@@ -308,13 +308,13 @@ class RescueAgentNode(DTROS):
 
         # publish rate
         rate = rospy.Rate(4)  # 10Hz
+        # for debugging
         # k_P = float(os.environ['K_P'])
         # k_I = float(os.environ['K_I'])
         # c1 = float(os.environ['C1'])
         # c2 = float(os.environ['C2'])
         # C = StuckController(k_P=k_P, k_I=k_I, c1=c1, c2=c2)
 
-        # C = StuckController(k_P=5, k_I=2, c1=5, c2=0.01)
         C = StuckController(k_P=6, k_I=0.1, c1=-5, c2=1)
         t_execution = 0.3
         t_stop = 1
