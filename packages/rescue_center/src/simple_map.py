@@ -13,13 +13,9 @@ class SimpleMap():
     def __init__(self, map_file):
         """Init method, to generate a new map from a yaml file
 
-        Note: 
-
         Args:
-            map_file: filename to read map from e.g. "test_map.yaml" 
+            map_file: filename to read map from e.g. "test_map.yaml"
 
-        Returns:
-            
         """
         # Read yaml file
         with open(map_file, 'r') as stream:
@@ -95,7 +91,7 @@ class SimpleMap():
         """Method to generate a semantic map from raw map containing
         information about tile type, orientation and boarders
 
-        Note: 
+        Note:
             Requires the Tile Object
             TODO: Unnecessary to pass map, could use class variable
 
@@ -104,7 +100,7 @@ class SimpleMap():
 
         Returns:
             A semantic map as dict of Tiles (keys = position tuple)
-            
+
         """
         map_dict = dict()
         numrows = len(map_raw)
@@ -148,9 +144,7 @@ class SimpleMap():
     ''' --- POSITIONING FUNCTIONS --- '''
 
     def position_on_map(self, position, subtile=False):
-        """Method to make sense of a raw position on the map 
-
-        Note: 
+        """Method to make sense of a raw position on the map
 
         Args:
             position: tuple of (x,y) position on map in [m]
@@ -158,11 +152,8 @@ class SimpleMap():
 
         Returns:
             0 position is if off lane, 1 if position is on lane
-            
-        """
 
-        # Returns higher-level information on the position_on_map
-        # depending on the map (bin, sem, etc.)
+        """
         if subtile:
             map = self.map_sem
         else:
@@ -197,20 +188,19 @@ class SimpleMap():
         """Method to calculate the "should-be" orientation of the duckiebot
         at a given position
 
-        Note: 
-            If lane following worked perfectly the heading of the duckiebot 
+        Note:
+            If lane following worked perfectly the heading of the duckiebot
             should be equal to the output of this function
 
         Args:
             position: tuple of (x,y) position on map in [m]
 
         Returns:
-            An angle in [deg] between (-180,180] in localization system 
+            An angle in [deg] between (-180,180] in localization system
             coordinate system
             None for positions on 4/way, 3/way or asphalt tile
-        
-        """
 
+        """
         # Check if valid position
         if self.get_tile(position) is not None:
             tile_x, tile_y = self.get_tile(position)
@@ -235,7 +225,6 @@ class SimpleMap():
                 y = abs(center_y*self.tile_size - (position[1] % self.tile_size))
                 # check if on inner or outer lane
                 lane = round(math.sqrt(x**2+y**2)/self.tile_size)
-                print("outer lane") if lane else "inner lane"
                 # convert center from binary to {-1;1} for atan2 calculations
                 curve_sign_x = 2*(center_x-0.5)
                 curve_sign_y = 2*(center_y-0.5)
@@ -246,24 +235,24 @@ class SimpleMap():
                 heading = self.normalize_angle((0.5+lane)*math.pi - heading)
         return heading
 
-    def pos_to_ideal_position(self, position):
+    def pos_to_ideal_position(self, position, heading=None):
         """Method to calculate the "should-be" position of the duckiebot
         at a given (real) position
 
-        Note: 
-            It only changes the lateral coordinate to be in the middle 
-            between the white and the yellow line (radial in curves, 
+        Note:
+            It only changes the lateral coordinate to be in the middle
+            between the white and the yellow line (radial in curves,
             hence two new coordinates)
 
         Args:
             position: tuple of (x,y) position on map in [m]
+            heading: only needed when on asphalt, else function returns None
 
         Returns:
             A position tuple (x,y) in [m] in localization coordinate system
-            None for positions on 4/way, 3/way or asphalt tile
-        
-        """
+            None for positions on 4/way or 3/way
 
+        """
         if self.get_tile(position) is not None:
             tile_x, tile_y = self.get_tile(position)
         else:
@@ -278,20 +267,41 @@ class SimpleMap():
                 lane = round((position[1] % self.tile_size)/self.tile_size)
                 coordinates = (position[0], (tile_y+0.25+lane/2)*self.tile_size)
         elif tile.type == "curve":
-                center_x = tile.centers[0][0]
-                center_y = tile.centers[0][1]
-                # calculate distance from center
-                x = abs(center_x*self.tile_size - (position[0] % self.tile_size))
-                y = abs(center_y*self.tile_size - (position[1] % self.tile_size))
-                # check if on inner or outer lane
-                lane = round(math.sqrt(x**2+y**2)/self.tile_size)
-                # calculate position using intercept theorem
-                base_x = (tile_x + center_x)*self.tile_size
-                base_y = (tile_y + center_y)*self.tile_size
-                distance = math.sqrt(x**2+y**2)
-                coord_x = base_x + x * ((0.25+lane/2)*self.tile_size)/distance
-                coord_y = base_y + y * ((0.25+lane/2)*self.tile_size)/distance
-                coordinates = (coord_x, coord_y)
+            center_x = tile.centers[0][0]
+            center_y = tile.centers[0][1]
+            # calculate distance from center
+            x = abs(center_x*self.tile_size - (position[0] % self.tile_size))
+            y = abs(center_y*self.tile_size - (position[1] % self.tile_size))
+            # check if on inner or outer lane
+            lane = round(math.sqrt(x**2+y**2)/self.tile_size)
+            # calculate position using intercept theorem
+            base_x = (tile_x + center_x)*self.tile_size
+            base_y = (tile_y + center_y)*self.tile_size
+            distance = math.sqrt(x**2+y**2)
+            coord_x = base_x + x * ((0.25+lane/2)*self.tile_size)/distance
+            coord_y = base_y + y * ((0.25+lane/2)*self.tile_size)/distance
+            coordinates = (coord_x, coord_y)
+        elif tile.type == "asphalt":
+            if heading is None: return None
+            cost = float('inf')
+            heading = int(heading)
+            # calculate current "reverse straight direction"
+            rev_h = self.normalize_angle(heading+180, reverse=True)
+            # loop through all "reverse direction +/- 90deg"
+            for h in range(heading+90, heading+270):
+                h = self.normalize_angle(h, reverse=True)
+                # loop through a couple of distances (set resolution in range)
+                for d in np.arange(0, self.tile_size, self.tile_size/10):
+                    # calculate point and find ideal pos and heading
+                    exit_dir = (position[0]+d*math.cos(h), position[1]+d*math.sin(h))
+                    tile_check = self.get_tile(exit_dir)
+                    ideal_pos = self.pos_to_ideal_position(exit_dir)
+                    ideal_heading = self.pos_to_ideal_heading(exit_dir)
+                    if ideal_pos is not None:
+                        # Update cost and coordinates if better solution is found
+                        if self.exit_cost(ideal_pos, position, rev_h, h, ideal_heading) < cost:
+                            coordinates = ideal_pos
+                            cost = self.exit_cost(ideal_pos, position, rev_h, h, ideal_heading)
         return coordinates
 
 
@@ -372,12 +382,34 @@ class SimpleMap():
         if not self.try_tile_idx((tile_x, tile_y)): return None
         return tile_x, tile_y
 
-    def normalize_angle(self, angle):
+    def exit_cost(self, exit_pos, current_pos, reverse_angle, exit_angle, ideal_angle):
+        # returns a cost > 0, which represents the effort of reversing to this
+        # exit position from the current position
+        tile_x, tile_y = self.get_tile(exit_pos)
+        tile = self.map_sem[(tile_x, tile_y)]
+        cost = float('inf')
+        if tile.type == 'straight':
+            # distance to exit point
+            distance = math.sqrt((exit_pos[0] - current_pos[0])**2
+                               + (exit_pos[1] - current_pos[1])**2)
+            # rotation effort to reverse exit to direction
+            first_rotation = abs(exit_angle - reverse_angle)
+            # rotation effort to turn to ideal angle after exit
+            second_rotation = abs(ideal_angle - exit_angle)
+            # Penalize distance and rotations (decent parameters 10, 0.5, 0.5)
+            cost = distance*10 + first_rotation*0.5 + second_rotation*0.5
+        return cost
+
+    def normalize_angle(self, angle, reverse=False):
+        # reverse=False (default):
         # takes an angle in radians and converts it to degrees in (-180;180]
-        newAngle = 180/math.pi*angle
+        # reverse=True:
+        # takes an angle in deg and converts it to radians in (-pi;pi]
+        newAngle = 180/math.pi*angle if not reverse else angle
         while (newAngle <= -180): newAngle += 360
         while (newAngle > 180): newAngle -= 360
-        return round(newAngle)
+        if reverse: newAngle = math.pi/180*newAngle
+        return newAngle
 
     def display_matrix(self, mat, name=None, sep_word="", sep_line="\n"):
         print("\n<%s>" % name if name else "\n")

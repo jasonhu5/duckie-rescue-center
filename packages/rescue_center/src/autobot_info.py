@@ -66,7 +66,7 @@ class AutobotInfo():
     def quat2angle(self, q):
         siny_cosp = 2 * (q.w*q.z + q.x*q.y)
         cosy_cosp = 1 - 2 * (q.y*q.y + q.z*q.z)
-        return (180.0/math.pi * math.atan2(siny_cosp, cosy_cosp))
+        return round((180.0/math.pi * math.atan2(siny_cosp, cosy_cosp)))
 
     def distance(self, positionA, positionB):
         xA, yA = positionA

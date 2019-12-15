@@ -52,6 +52,8 @@ class RescueAgentNode(DTROS):
         # For closed loop control
         self.controller_counter = 0
         self.v_ref = 0.3
+        self.desired_pos = None
+        self.desired_heading = None
 
         # Subscriber
         # 1. distress classification from rescue_center_node
@@ -269,7 +271,7 @@ class RescueAgentNode(DTROS):
         msg.omega = 0
         self.pub_car_cmd.publish(msg)
 
-    def readyForLF(self):
+    def readyForLF(self, recalculateDesired=True):
         '''Checks, if the rescue operation has been finished based on current duckiebot pose (similar to classificiation)'''
         # TODO: implement actual logic, this will be a different classifier
         debug_param = rospy.get_param('~everythingOK')
@@ -279,8 +281,13 @@ class RescueAgentNode(DTROS):
         #check,if duckiebot is back in lane
         current_pos = self.autobot_info.positionSimple  # (x, y)
         current_heading = self.autobot_info.headingSimple  # degree
-        desired_pos = self.map.pos_to_ideal_position(current_pos)
-        desired_heading = self.map.pos_to_ideal_heading(current_pos)
+        
+        if recalculateDesired:
+            desired_pos = self.map.pos_to_ideal_position(current_pos)
+            desired_heading = self.map.pos_to_ideal_heading(desired_pos)
+        else:
+            desired_pos = self.desired_pos
+            desired_heading = self.desired_heading
         tol_angle = 30  # +/- in DEG
         tol_position = self.map.tile_size/4  # within the lane
         delta_phi = abs(current_heading-desired_heading)
@@ -335,16 +342,32 @@ class RescueAgentNode(DTROS):
                     self.veh_id, current_pos, current_heading))
 
                 # TODO: could incorporate an extra margin
-                desired_pos = self.map.pos_to_ideal_position(current_pos)
-                desired_heading = self.map.pos_to_ideal_heading(current_pos)
-                print("Desired: pos = {}, phi = {}".format(
-                    desired_pos, desired_heading))
-                print("current_heading: {}, desired_heading: {}".format(
-                    current_heading, desired_heading))
+                desired_pos = self.map.pos_to_ideal_position(current_pos, heading=current_heading)
+                # Check, if at intersection: 4-way or 3-way:
+                if desired_pos == None: 
+                    print("at Intersection")
+                    self.stopDuckiebot()
+                    if self.readyForLF(recalculateDesired=False):
+                        print("[{}] Ready for LF".format(self.veh_id))
+                        self.activated = False
+                        self.autobot_info.rescue_class = Distress.NORMAL_OPERATION
+                        msg = BoolStamped()
+                        msg.data = True
+                        self.pub_everything_ok.publish(msg)
+                        # TODO: implement else case: go forward                        
+                    continue
+                else:
+                    self.desired_pos = desired_pos
+                    desired_heading = self.map.pos_to_ideal_heading(desired_pos)
+                    self.desired_heading = desired_heading
+                    print("Desired: pos = {}, phi = {}".format(
+                        desired_pos, desired_heading))
+                    print("current_heading: {}, desired_heading: {}".format(
+                        current_heading, desired_heading))
 
                 if self.controller_counter < 6:
                     # if(abs(current_p-desired_p) > tol_pos or abs(current_heading-desired_heading) > tol_heading):
-                    if(1):
+                    if(1):                            
                         # Calculate controller output
                         v_out, omega_out = C.getControlOutput(
                             current_pos, current_heading, desired_pos, desired_heading, v_ref=self.v_ref, dt_last=dt)
@@ -374,7 +397,7 @@ class RescueAgentNode(DTROS):
                         msg = BoolStamped()
                         msg.data = True
                         self.pub_everything_ok.publish(msg)
-                    # TODO: implement else case: redo command?
+                    # Note: currently it will redo commands, since counter is reset to Zero
 
                 # For open loop control
                 # self.calculate_car_cmd()

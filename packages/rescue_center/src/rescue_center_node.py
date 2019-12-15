@@ -122,6 +122,12 @@ class RescueTriggerNode(DTROS):
         self.id_dict[veh_id].headingSimple = msg.data[3] 
         self.id_dict[veh_id].last_movedSimple = msg.data[4] # in s
         self.pub_autobot_info[veh_id].publish(self.autobotInfo2Msg(self.id_dict[veh_id]))
+
+        # For debugging
+        # position_ideal_debug = self.map.pos_to_ideal_position(self.id_dict[veh_id].positionSimple, heading=self.id_dict[veh_id].headingSimple)
+        # print("[{}]current_pos: {}, ideal_pos: {}, onRoad: {}, heading: {}".format(veh_id,  
+        #     self.id_dict[veh_id].positionSimple, position_ideal_debug, self.id_dict[veh_id].onRoad,
+        #     self.id_dict[veh_id].headingSimple))
         # print("[{}] Received simple localization: ({}, {}, {})".format(veh_id, msg.data[1], msg.data[2], msg.data[3]))
         # print("[{}] Received simple localization: ({}, {})".format(veh_id, self.id_dict[veh_id].positionSimple, self.id_dict[veh_id].headingSimple))
 
