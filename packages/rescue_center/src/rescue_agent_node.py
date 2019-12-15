@@ -13,80 +13,123 @@ from time import sleep
 import math
 import numpy as np
 
-# Parameters for Open Loop Control
-OMEGA_CMD_PER_TURN = 8
-DEGREE_PER_TURN = 24
-V_CMD_PER_STEP = -0.1
-CM_PER_STEP = 2
-EXTRA_DISTANCE_IN_M = 0.05
-LESS_ANGLE_IN_DEGREE = 20
+# Parameters 
+TOL_ANGLE_IN_DEG = 30 
+TOL_POSITION_IN_M = 0.14625 # tileSize/4
+KP_CONTROLLER = 6
+KI_CONTROLLER = 0.1
+C1_CONTROLLER = -5 
+C2_CONTROLLER = 1
+V_REF_CONTROLLER = 0.3
+T_EXECUTION = 0.3
+T_STOP = 1
+NUMBER_RESCUE_CMDS = 3 # before checking readyForLF()
 
+
+# Parameters for Closed Loop Control
 
 class RescueAgentNode(DTROS):
+    """Rescue Agent Node
 
+    - takes care of rescue operation, once duckiebot has been classified as "distressed" (from rescue center).
+    - a "Rescue Agent" is launched for every duckiebot, which has been spotted by the localization system 
+    (in passive mode for non-distressed duckiebots)
+
+    Args:
+        node_name (): a unique, descriptive name for the node that ROS will use
+
+    Attributes:
+        - veh_name (str): name of the vehicle, e.g. autobot27
+        - veh_id (int): ID of the vehicle, e.g. 27
+        - activated (boolean): rescue agent sends rescue commands to duckiebot, if and only if self.activated == True
+        - autobot_info(:obj:`AutobotInfo`): object, where all current information of the duckiebot is saved (e.g. position, heading, etc.)
+        - map (:obj:`SimpleMap`): map object providing functions for calculating desired position and heading,
+                                reads in YAML file --> works for other maps as well
+        
+        - v_ref(float): backward velocity during closed loop rescue
+        - controller_counter (int): counting up, after each rescue cmd. Stops after maximum number of rescue cmds
+        - desired_pos(tuple (float, float)): current desired position for rescue operation
+        - desired_heading (float): current desired heading for rescue operation (-180 DEG --> 180 DEG, 0 DEG facing positive x-Direction)
+        - current_car_cmd (:obj:`Twist2DStamped`): car command, which is being sent to the duckiebot
+
+    Subscriber:
+        TODO: define message type Distress and directly pass that (in rescue center)
+        - sub_distress_classification: /[self.veh_name]/distress_classification (:obj:`String`): 
+            distress classification from rescue center as rescue_class.value (int converted to String)
+        - sub_autobot_info: /[self.veh_name]/autobot_info (:obj: `AutobotInfoMsg`): 
+            AutobotInfo message from rescue_center
+
+    Publisher:
+        - pub_rescueDone: [self.veh_name]/rescueDone/ (:obj:`BoolStamped`): 
+            publishes, if rescue operation has been finished
+            1. to FSM node, True triggers state transition to LANE_FOLLOWING
+            2. to rescue_center: True activates monitoring of duckiebot
+        - pub_car_cmd: /[self.veh_name]/lane_recovery_node/car_cmd (:obj: `Twist2DStamped`):
+            publishes rescue commands to car_cmd_switch_node
+        - pub_test: /rescue_agents/test: test publisher to monitor certain values for debugging 
+    """
     def __init__(self, node_name):
 
         # initialize DTROS parent class
         super(RescueAgentNode, self).__init__(node_name=node_name)
-        self.veh_name = rospy.get_param("~distressed_veh")  # e.g. autobot27
+
+        # inialize attributes
+        self.veh_name = rospy.get_param("~distressed_veh")  
         self.veh_id = int(
-            ''.join([x for x in self.veh_name if x.isdigit()]))  # e.g. 27
-        self.activated = False  # triggers rescue
+            ''.join([x for x in self.veh_name if x.isdigit()])) 
+        self.activated = False 
         self.autobot_info = AutobotInfo()
-
-        # for open loop control
-        self.current_car_cmd = Twist2DStamped()  # v, omega
-        self.current_car_cmd.v = 0
-        self.current_car_cmd.omega = 0
-        self.car_cmd_array = list()
-        self.finished_execution = False
-
-        # simpleMap for localization
+        # TODO: save map path somewhere
         map_file_path = os.path.join(
             "/code/catkin_ws/src",
             "duckie-rescue-center/packages/rescue_center/src",
             "test_map.yaml"
         )
         self.map = SimpleMap(map_file_path)
-
-        # For closed loop control
+        self.current_car_cmd = Twist2DStamped() 
+        self.current_car_cmd.v = 0
+        self.current_car_cmd.omega = 0
         self.controller_counter = 0
-        self.v_ref = 0.3
+        self.v_ref = V_REF_CONTROLLER
         self.desired_pos = None
         self.desired_heading = None
-        self.fixDesired = False #used in curves
+        self.controller = StuckController(k_P=KP_CONTROLLER, k_I=KI_CONTROLLER, c1=C1_CONTROLLER, c2=C2_CONTROLLER)
+
 
         # Subscriber
-        # 1. distress classification from rescue_center_node
         self.sub_distress_classification = rospy.Subscriber("/{}/distress_classification".format(self.veh_name),
-                                                            String, self.cb_rescue)
-        # 2. Autobot info from rescue_center_node
+                                                            String, self.cb_distress_classification)
         self.sub_autobot_info = rospy.Subscriber(
             "/{}/autobot_info".format(
                 self.veh_name), AutobotInfoMsg, self.cb_autobot_info
         )
 
         # Publisher
-        # 1. everything ok to rescue_center_node
-        self.pub_everything_ok = rospy.Publisher(
+        self.pub_rescueDone = rospy.Publisher(
             "{}/rescueDone/".format(self.veh_name), BoolStamped, queue_size=1)
-        # 2. car_cmd to car_cmd_switch node
         self.pub_car_cmd = rospy.Publisher(
             "/{}/lane_recovery_node/car_cmd".format(self.veh_name),
             Twist2DStamped,
             queue_size=1,
         )
-        # for testing
-        self.pub_tst = rospy.Publisher(
+        self.pub_test = rospy.Publisher(
             "/rescue_agents/test",
             String,
             queue_size=1,
         )
 
     def cb_autobot_info(self, msg):
-        '''callback function for receiving AutobotInfoMsg from rescue_center: 
-                saves msg into self.autobot_info'''
-        self.pub_tst.publish("Got info for {}".format(self.veh_name))
+        """Callback function triggered by self.sub_autobot_info: 
+                saves msg into self.autobot_info
+
+            Args: 
+            - msg (:obj:`AutobotInfoMsg`): received message
+
+            Parameters: None
+
+            Returns: None
+        """
+        self.pub_test.publish("Got info for {}".format(self.veh_name))
         self.autobot_info.timestamp = msg.timestamp
         self.autobot_info.fsm_state = msg.fsm_state
         self.autobot_info.position = (msg.position[0], msg.position[1])
@@ -99,140 +142,42 @@ class RescueAgentNode(DTROS):
         self.autobot_info.positionSimple = (
             msg.positionSimple[0], msg.positionSimple[1])
 
-    def cb_rescue(self, msg):
-        '''Callback function for receiving rescue trigger from rescue-center:
-                -activates rescue operation and stops duckiebot
-                - for open loop control: calculates car_cmd
-            '''
+    def cb_distress_classification(self, msg):
+        """Callback function triggered by self.sub_distress_classification: 
+                - stops duckiebot, saves distress type in self.autobot_info and triggers rescue operation
+
+            Args: 
+            - msg (:obj:`AutobotInfoMsg`): received message
+
+            Parameters: None
+
+            Returns: None
+        """
         distress_type_num = int(msg.data)
         self.log("Received trigger. Distress Case: {}. Stopping {} now".format(
             distress_type_num, self.veh_name))
         if distress_type_num > 0:
-            # @Note: this should always be the case, since rescue_center_node only publishes, if rescue_class >0
+            # NOTE: this should always be the case, since rescue_center_node only publishes, if rescue_class >0
             self.activated = True
             self.autobot_info.rescue_class = Distress(distress_type_num)
             self.stopDuckiebot()
-            # for open loop control:
-            # sleep(3)
-            # calculate_car_cmd
-            # self.calculate_car_cmd()
 
-    def calculate_car_cmd(self):
-        '''For open loop control: Calculates car_cmd based on distress_type and current duckiebot pose'''
-        current_pos = self.autobot_info.position  # (x, y)
-        current_heading = self.autobot_info.heading  # degree
-        self.log("Distressed at: {} with heading: {}".format(
-            current_pos, current_heading))
-        ideal_pos = self.map.pos_to_ideal_position(current_pos)
-        desired_heading = self.map.pos_to_ideal_heading(current_pos)
-        print("Desired position: {}, Desired Heading: {}".format(
-            ideal_pos, desired_heading))
+    def readyForLF(self, recalculateDesired=True, tol_angle=TOL_ANGLE_IN_DEG, tol_pos=TOL_POSITION_IN_M):
+        """Checks, if duckiebot is ready for lane following (after rescue operation)
 
-        if self.autobot_info.rescue_class == Distress.OUT_OF_LANE:
-            # TODO: implement actual logic
-            self.car_cmd_array = list()
-        elif self.autobot_info.rescue_class == Distress.STUCK:
-            # stuck
-            if ideal_pos[0] == current_pos[0]:
-                # vertical straight tile
-                desired_pos_y = ideal_pos[1] + \
-                    np.sign(ideal_pos[1]-current_pos[1])*EXTRA_DISTANCE_IN_M
-                # desired_pos_x = ideal_pos[0]
-                # desired_pos = (desired_pos_x, desired_pos_y)
-                if current_heading > 90 and current_heading < 180:
-                    distance_backwards_cm = 100 * \
-                        abs(desired_pos_y-current_pos[1]) / \
-                        math.sin(math.pi/180*(180-current_heading))
-                    print("Distance to move back: {}".format(
-                        distance_backwards_cm))
-                    angle_to_turn = desired_heading - current_heading - \
-                        np.sign(desired_heading - current_heading) * \
-                        LESS_ANGLE_IN_DEGREE
-                    print("Angle to turn: {}".format(angle_to_turn))
+            Args: None
 
-                    self.moveBack_cmDistance(
-                        distance_backwards_cm, smoothCmd=False)  # add cmds to array
-                    self.turn_angle(angle_to_turn, smoothCmd=False)
-            # @Note: Those are good hard coded values for a test case:
-            # for i in range(3):
-            #     cmd = Twist2DStamped()
-            #     cmd.v = -0.5
-            #     cmd.omega = 0
-            #     self.car_cmd_array.append(cmd)
-            # for i in range(3):
-            #     cmd = Twist2DStamped()
-            #     cmd.v = 0
-            #     cmd.omega = 0.8
-            #     self.car_cmd_array.append(cmd)
+            Parameters: 
+            - recalculateDesired (Boolean): 
+                if True, function will recalculate desired position/heading and check tolerance based on those
+                if False, function will use last desired position(heading)
+            - tol_angle (float): allowed angle tolerance (+/-)
+            - tol_pos (float): allowed position tolerance (+/-)
 
-    def moveBack_cmDistance(self, distance_inCM, smoothCmd=False, debug=False):
-        '''adds cmds to self.car_cmd_array to move back specified distance: discretized in CM_perStep (2)
-        '''
-        cmd_move = Twist2DStamped()
-        if debug:
-            cmd_move.v = rospy.get_param('~velocity_backwards')
-        else:
-            cmd_move.v = V_CMD_PER_STEP
-        cmd_move.omega = 0
-
-        if not smoothCmd:
-            cmd_pause = Twist2DStamped()
-            cmd_pause.v = 0.0
-            cmd_pause.omega = 0.0
-            # this moves 2cm
-            cmd_package = list()
-            cmd_package.append(cmd_move)
-            for i in range(5):
-                # TODO: make code nicer
-                cmd_package.append(cmd_pause)
-        else:
-            # TODO: for smooth cmd: 20 percent bigger distance than withou
-            cmd_package = [cmd_move]
-
-        if distance_inCM < CM_PER_STEP:
-            self.log("[Error in moveBack_cmDistance]: autobot must move more than {}cm".format(
-                CM_PER_STEP))
-        else:
-            num_packages = int(math.floor(distance_inCM/CM_PER_STEP))
-            for i in range(num_packages):
-                self.car_cmd_array = self.car_cmd_array + cmd_package
-
-    def turn_angle(self, angle_inDeg, smoothCmd=False):
-        '''adds cmds to self.car_cmd_array to turn specified angle: discretized: DEGREE_PER_TURN = 24'''
-        # TODO: make code look nicer
-        cmd_turn = Twist2DStamped()
-        cmd_turn.v = 0
-        cmd_turn.omega = np.sign(angle_inDeg)*OMEGA_CMD_PER_TURN
-        cmd_turn_array = list()
-        for i in range(1):
-            cmd_turn_array.append(cmd_turn)
-
-        if not smoothCmd:
-            cmd_pause = Twist2DStamped()
-            cmd_pause.v = 0.0
-            cmd_pause.omega = 0.0
-            # this moves 24 deg
-            cmd_package = list()
-            for i in range(5):
-                # TODO: make code nicer
-                cmd_package.append(cmd_pause)
-            cmd_package = cmd_turn_array + cmd_package
-        else:
-            # TODO: overshoots, decrease gain
-            cmd_package = list(cmd_turn_array)
-        # cmd_package needs 4-5 turns to get 45 degrees
-        # self.car_cmd_array = self.car_cmd_array + cmd_package
-        if abs(angle_inDeg) < DEGREE_PER_TURN:
-            self.log("[Error in moveBack_cmDistance]: autobot must turn more than {} degrees".format(
-                DEGREE_PER_TURN))
-        else:
-            num_packages = int(math.floor(abs(angle_inDeg)/DEGREE_PER_TURN))
-            for i in range(num_packages):
-                self.car_cmd_array = self.car_cmd_array + cmd_package
-
-    def readyForLF(self, recalculateDesired=True):
-        '''Checks, if the rescue operation has been finished based on current duckiebot pose (similar to classificiation)'''
-        # TODO: implement actual logic, this will be a different classifier
+            Returns: 
+            - (Boolean): True, iff ready for lane following 
+        """
+        # for debugging: /rescue/rescue_agents/rescue_agent_[self.vehID]/everythingOK
         debug_param = rospy.get_param('~everythingOK')
         if debug_param:
             return True
@@ -240,173 +185,145 @@ class RescueAgentNode(DTROS):
         # check,if duckiebot is back in lane
         current_pos = self.autobot_info.positionSimple  # (x, y)
         current_heading = self.autobot_info.headingSimple  # degree
-
         if recalculateDesired:
             desired_pos = self.map.pos_to_ideal_position(current_pos)
             desired_heading = self.map.pos_to_ideal_heading(desired_pos)
         else:
             desired_pos = self.desired_pos
             desired_heading = self.desired_heading
-        tol_angle = 30  # +/- in DEG
-        tol_position = self.map.tile_size/4  # within the lane
         delta_phi = abs(current_heading-desired_heading)
         delta_phi = min(delta_phi, 360-delta_phi)
         delta_d = math.sqrt(
             (desired_pos[0] - current_pos[0])**2 + (desired_pos[1] - current_pos[1])**2)
         print("delta_phi: {}, delta_d: {}".format(delta_phi, delta_d))
-        if delta_d < tol_position and delta_phi < tol_angle:
+        if delta_d < tol_pos and delta_phi < tol_angle:
             return True
-
+        # if duckiebot is not back in lane
         return False
 
-    def goodHeading(self):
-        # TODO: implement logic: hard coded now
-        if abs(abs(self.autobot_info.heading) - 180) < 20:
-            return True
-
     def stopDuckiebot(self):
+        """Stops duckiebot
+
+            Args: None
+
+            Parameters: None
+
+            Returns: None
+        """
         car_cmd = Twist2DStamped()
         car_cmd.v = 0
         car_cmd.omega = 0
         self.current_car_cmd = car_cmd
         self.pub_car_cmd.publish(self.current_car_cmd)
+    
+    def goBackToLF(self):
+        """Duckiebot goes back to lane following
 
+            Args: None
+        
+            Parameters: None
+
+            Returns: None
+        """
+        self.activated = False
+        self.autobot_info.rescue_class = Distress.NORMAL_OPERATION
+        msg = BoolStamped()
+        msg.data = True
+        self.pub_rescueDone.publish(msg)
+        self.controller_counter = 0
+        
     def run(self):
+        """Main loop of ROS node
 
+            Args: None
+
+            Parameters: None
+
+            Returns: None
+        """
         # publish rate
         rate = rospy.Rate(4)  # 10Hz
-        # for debugging
-        # k_P = float(os.environ['K_P'])
-        # k_I = float(os.environ['K_I'])
-        # c1 = float(os.environ['C1'])
-        # c2 = float(os.environ['C2'])
-        # C = StuckController(k_P=k_P, k_I=k_I, c1=c1, c2=c2)
-
-        C = StuckController(k_P=6, k_I=0.1, c1=-5, c2=1)
-        t_execution = 0.3
-        t_stop = 1
-
-        # tol_pos = 0.02
-        # tol_heading = 5
-        dt = 0.2
 
         while not rospy.is_shutdown():
             if self.activated:
+                # in rescue operation
+
+                # --- GET CURRENT POSITION ---#
                 if self.autobot_info.positionSimple[0] == 0 and self.autobot_info.positionSimple[0] == 0:
+                    # simple localization has not been triggered yet (duckiebot did not move) --> take normal localization output
                     current_pos = self.autobot_info.position  # (x, y)
                     current_heading = self.autobot_info.heading  # degree
                 else:
+                    # use simple localization
                     current_pos = self.autobot_info.positionSimple  # (x, y)
                     current_heading = self.autobot_info.headingSimple  # degree
-                print("Current: [{}]: pos = {}, phi = {}".format(
+                print("[{}] Current: pos = {}, phi = {}".format(
                     self.veh_id, current_pos, current_heading))
-                
-                # on a curve: fix desired
-                tile_sem = self.map.pos_to_semantic(current_pos)
-                if (tile_sem == "curve"):
-                    print("[{}] on a curve: fixing desired")
 
-                # TODO: could incorporate an extra margin
+                # --- CALCULATE DESIRED POSITION ---#
                 desired_pos = self.map.pos_to_ideal_position(
                     current_pos, heading=current_heading)
+                # check, if at bad position
                 if desired_pos == None:
-                    # No good rescue point found
-                    print('no good point found! Going backwards now...')
-                    msg = Twist2DStamped()
-                    msg = Twist2DStamped()
-                    msg.v = -self.v_ref
-                    msg.omega = 0
-                    self.pub_car_cmd.publish(msg)
+                    # No good rescue point found: e.g. on asphalt next to curves
+                    print('[{}] no good point found! Going backwards now...'.format(self.veh_id))
+                    self.current_car_cmd.v = -self.v_ref
+                    self.current_car_cmd.omega = 0
+                    self.pub_car_cmd.publish(self.current_car_cmd)
+                    sleep(T_EXECUTION)
                     # stop car
-                    sleep(t_execution)
                     self.stopDuckiebot()
-                    sleep(t_stop)
+                    sleep(T_STOP)
                     continue
                 # Check, if at intersection: 4-way or 3-way:
                 if desired_pos == float('inf'):
-                    print("at Intersection, check, if ready for LF")
+                    print("[{}] at Intersection, check, if ready for LF".format(self.veh_id))
                     self.stopDuckiebot()
                     if self.readyForLF(recalculateDesired=False):
                         print("[{}] Ready for LF".format(self.veh_id))
-                        self.activated = False
-                        self.autobot_info.rescue_class = Distress.NORMAL_OPERATION
-                        msg = BoolStamped()
-                        msg.data = True
-                        self.pub_everything_ok.publish(msg)
-                        self.controller_counter = 0
+                        self.goBackToLF()
                         # TODO: implement else case: go forward
                     continue
-                self.desired_pos = desired_pos
-                print("desired_pos (used to calculate heading)", desired_pos)
-                desired_heading = self.map.pos_to_ideal_heading(
-                    desired_pos)
-                self.desired_heading = desired_heading
-                print("Desired: pos = {}, phi = {}".format(
-                    desired_pos, desired_heading))
-                print("current_heading: {}, desired_heading: {}".format(
-                    current_heading, desired_heading))
-
-                if self.controller_counter < 6:
-                    # if(abs(current_p-desired_p) > tol_pos or abs(current_heading-desired_heading) > tol_heading):
-                    if(1):
-                        # Calculate controller output
-                        v_out, omega_out = C.getControlOutput(
-                            current_pos, current_heading, desired_pos, desired_heading, v_ref=self.v_ref, dt_last=dt)
-                        if self.veh_id == 27:
-                            print("[{}]: v = {}, omega = {}".format(
-                                self.veh_id, v_out, omega_out))
-                        # Send cmd to duckiebot
-                        msg = Twist2DStamped()
-                        msg.v = v_out
-                        msg.omega = omega_out
-                        self.pub_car_cmd.publish(msg)
-                        # stop car
-                        sleep(t_execution)
-                        self.stopDuckiebot()
-                        sleep(t_stop)
+                
+                # --- CALCULATE DESIRED HEADING--- #
+                self.desired_pos = desired_pos # need this, because I want to use the old desired_pos in case of an intersection
+                self.desired_heading = self.map.pos_to_ideal_heading(
+                    self.desired_pos)
+                print("[{}] Desired: pos = {}, phi = {}".format(
+                    self.veh_id, self.desired_pos, self.desired_heading))
+                
+                # --- EXECUTE CONTROL COMMANDS---#
+                if self.controller_counter < NUMBER_RESCUE_CMDS:
+                    # Calculate controller output
+                    v_out, omega_out = self.controller.getControlOutput(
+                        current_pos, current_heading, self.desired_pos, self.desired_heading, v_ref=self.v_ref, dt_last=T_EXECUTION)
+                    print("[{}]: v = {}, omega = {}".format(
+                        self.veh_id, v_out, omega_out))
+                    # Send cmd to duckiebot
+                    self.current_car_cmd.v = v_out
+                    self.current_car_cmd.omega = omega_out
+                    self.pub_car_cmd.publish(self.current_car_cmd)
+                    sleep(T_EXECUTION)
+                    # stop car
+                    self.stopDuckiebot()
+                    sleep(T_STOP)
                     self.controller_counter += 1
-                    print(self.controller_counter)
+                    print("Finished {} control action".format(self.controller_counter + 1))
+                # --- CHECK IF RESCUE IS FINISHED --- #
                 else:
                     print("[{}] Finished rescue attempt. Check, if ok...".format(
                         self.veh_id))
-                    self.controller_counter = 0
                     if self.readyForLF():
                         print("[{}] Ready for LF".format(self.veh_id))
-                        self.activated = False
-                        self.autobot_info.rescue_class = Distress.NORMAL_OPERATION
-                        msg = BoolStamped()
-                        msg.data = True
-                        self.pub_everything_ok.publish(msg)
-                    # Note: currently it will redo commands, since counter is reset to Zero
-
-                # For open loop control
-                # self.calculate_car_cmd()
-                # if self.car_cmd_array:
-                #     self.current_car_cmd = self.car_cmd_array.pop(0)
-                #     self.pub_car_cmd.publish(self.current_car_cmd)
-                #     # self.finished_execution = False
-                #     self.log("Applying v = {}, w = {}".format(self.current_car_cmd.v, self.current_car_cmd.omega))
-                #     # if not self.car_cmd_array:
-                #     #     # just popped out last one
-                #     #     self.finished_execution = True
-                # else:
-                #     self.log("Finished applying commands")
-                #     self.stopDuckiebot()
-                #     # self.calculate_car_cmd()
-
-                # if self.finishedRescue():
-                #     self.log("Finished Rescue")
-                #     self.activated = False
-                #     self.autobot_info.rescue_class = Distress.NORMAL_OPERATION
-                #     msg = BoolStamped()
-                #     msg.data = True
-                #     self.pub_everything_ok.publish(msg)
-                    # rospy.set_param('~everythingOK', 'false')
+                        self.goBackToLF()
+                    else:
+                        self.controller_counter = 0
+                        print("[{}] Duckiebot still not ready for LF. New rescue attempt.".format(self.veh_id))
             rate.sleep()
 
 
 if __name__ == '__main__':
-    # create the node
+    # create node
     node = RescueAgentNode(node_name='rescue_agent_node')
     # run node
     node.run()

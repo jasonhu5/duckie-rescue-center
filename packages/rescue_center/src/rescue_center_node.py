@@ -12,15 +12,52 @@ from simple_map import SimpleMap
 from autobot_info import AutobotInfo, Distress
 from nav_msgs.msg import Path
 from rescue_center.msg import AutobotInfoMsg
-# 11 
 
+class RescueCenterNode(DTROS):
+    """Rescue Center Node
 
-class RescueTriggerNode(DTROS):
+    - Monitors all bots currenty visible on the map and classifies if they are in distress or not
+    - Responsible for launching and alarming Rescue Agents 
+
+    Args:
+        node_name (): a unique, descriptive name for the node that ROS will use
+
+    Attributes:
+        - veh_list (list): A list of all vehicles visible on the map
+        - veh_dict (dist): A dict of all vehicles visible on the map (key=id, value=AutobotInfo)
+        - parameters: Used to pass certain parameters to the node via rosparam
+        - map: A map of type SimpleMap(), necessary for classification
+        - The following dictionaries to store the bot_wise subcribers and publishers 
+        for communication between rescue center and rescue agents:
+            - pub_trigger
+            - pub_rescue_classfication
+            - sub_fsm_states
+            - sub_everythingOk
+            - pub_autobot_info
+
+    Subscriber:
+        - sub_markers: /cslam_markers (:obj:`MarkerArray`): 
+            Rviz markers from the online localization systems
+        - sub_simpleLoc: /simple_loc_bots (:obj: `Float64MultiArray`): 
+            Position and heading of the bots from the SimpleLoc system
+        - sub_fsm_states[veh_id]: /autobot{}/fsm_mode (:obj:`FSMstate`)
+            FSM state from every duckiebot
+        - sub_everythingOk[veh_id]: /rescue/rescue_agents/autobot{}/rescueDone (:obj:`BoolStamped`)
+            Used to get the signal from the rescue agent, that a rescue operation is done
+
+    Publisher:
+        - pub_trigger[veh_id]: /autobot{}/recovery_mode (:obj:`BoolStamped`): 
+            Triggers the recovery mode for a certain bot and activates its rescue agent 
+        - pub_rescue_classfication[veh_id]: ~/autobot{}/distress_classification (:obj: `String`):
+            Gives the result of the latest classification to each rescue agent
+        - pub_autobot_info[veh_id]: /autobot{}/autobot_info (:obj: `AutobotInfoMsg`):
+            Passes all collected information about a duckiebot to the rescue agent
+    """
 
     def __init__(self, node_name):
 
         # initialize DTROS parent class
-        super(RescueTriggerNode, self).__init__(node_name=node_name)
+        super(RescueCenterNode, self).__init__(node_name=node_name)
 
         # List of current bots
         self.veh_list = list()
@@ -30,7 +67,7 @@ class RescueTriggerNode(DTROS):
         ## parameters
         # threshold distance to consider bot not moving
         self.parameters['~dist_thres'] = 0.01 # TODO: tune parameter
-        # number of windows to use for filtering
+        # number of windows to use for filtering, currently not used
         self.parameters['~avg_window'] = 10 # TODO. tune parameter
         self.updateParameters()
 
@@ -46,7 +83,6 @@ class RescueTriggerNode(DTROS):
         self.pub_rescue_classfication = dict()
         self.sub_fsm_states = dict()
         self.sub_everythingOk = dict()
-        self.sub_path = dict()
         self.pub_autobot_info = dict()
 
         # build simpleMap
@@ -59,15 +95,13 @@ class RescueTriggerNode(DTROS):
         self.map = SimpleMap(map_file_path)
         self.map.display_raw_debug()
 
-        #save current time:
-        self.currentTime = None
-
 
     def updateSubscriberPublisher(self, veh_id):
-        '''
-        Updates Subscriber and Publisher dictionaries, if new duckiebot is added
-        Input: veh_id (int)
-        '''
+        """Updates Subscriber and Publisher dictionaries, if new duckiebot is added
+        
+        Args: 
+            veh_id: ID of the new duckiebot spotted by the localization system (int)
+        """
 
         # 1. Publisher: Trigger
         self.pub_trigger[veh_id] = rospy.Publisher(
@@ -95,11 +129,7 @@ class RescueTriggerNode(DTROS):
             self.cbEverythingOk,
             callback_args=veh_id
         )
-        #5. Subscriber: Path
-        self.sub_path[veh_id] = rospy.Subscriber(
-            "/movable_path_autobot{}".format(veh_id), Path, self.cbPath, callback_args=veh_id, queue_size=30)
-
-        # test
+        # 5. Publisher: AutobotInfo Msg
         self.pub_autobot_info[veh_id] = rospy.Publisher(
             "/autobot{}/autobot_info".format(veh_id),
             AutobotInfoMsg,
@@ -108,6 +138,13 @@ class RescueTriggerNode(DTROS):
 
 
     def cbSimpleLoc(self, msg):
+        """Callback of SimpleLoc, reads message, stores position and heading in
+        AutobotInfo and publishes it
+        
+        Args: 
+            msg: ROS message (Float64MultiArray)
+        """
+
         # TODO: Jason will change the simple localization output from tag id to autobot id
         if (msg.data[0] == 426):
             veh_id = 27
@@ -116,12 +153,10 @@ class RescueTriggerNode(DTROS):
         else:
             veh_id = msg.data[0]
         
-        # veh_id = int(msg.data[0])
-
         self.id_dict[veh_id].positionSimple = (msg.data[1], msg.data[2])
         self.id_dict[veh_id].headingSimple = msg.data[3] 
         self.id_dict[veh_id].last_movedSimple = msg.data[4] # in s
-        self.pub_autobot_info[veh_id].publish(self.autobotInfo2Msg(self.id_dict[veh_id]))
+        self.pub_autobot_info[veh_id].publish(self.id_dict[veh_id].autobotInfo2Msg())
 
         # For debugging
         # position_ideal_debug = self.map.pos_to_ideal_position(self.id_dict[veh_id].positionSimple, heading=self.id_dict[veh_id].headingSimple)
@@ -130,52 +165,31 @@ class RescueTriggerNode(DTROS):
         #     self.id_dict[veh_id].headingSimple))
         # print("[{}] Received simple localization: ({}, {}, {})".format(veh_id, msg.data[1], msg.data[2], msg.data[3]))
         # print("[{}] Received simple localization: ({}, {})".format(veh_id, self.id_dict[veh_id].positionSimple, self.id_dict[veh_id].headingSimple))
-
-    def cbPath(self, msg, veh_id):
-        self.id_dict[veh_id].updatePath(msg)
     
     def cbEverythingOk(self, msg, veh_id):
+        """Callback of RescueAgent, which signals that the rescue operation is over
+        
+        Args: 
+            msg: ROS message (Float64Array)
+            veh_id: ID of duckiebot
+        """
+
         if msg.data == True:
             self.id_dict[veh_id].in_rescue = False
-            self.id_dict[veh_id].last_moved = self.currentTime
+            self.id_dict[veh_id].last_moved = self.id_dict[veh_id].timestamp
             msg = BoolStamped()
             msg.data = False
             self.pub_trigger[veh_id].publish(msg)
 
 
-    def autobotInfo2Msg(self, info):
-        msg = AutobotInfoMsg()
-        if info.timestamp:
-            msg.timestamp = info.timestamp
-        if info.fsm_state:
-            msg.fsm_state = info.fsm_state
-        if info.position[0]:
-            msg.position = [info.position[0], info.position[1]]
-        if info.filtered:
-            msg.filtered = [info.filtered[0], info.filtered[1]]
-        # msg.heading = 
-        if info.last_moved:
-            msg.last_moved = info.last_moved
-        if info.in_rescue:
-            msg.in_rescue = info.in_rescue
-        if info.onRoad:
-            msg.onRoad = info.onRoad
-        if info.rescue_class:
-            msg.rescue_class = info.rescue_class.value 
-        if info.heading:
-            msg.heading = info.heading
-        # for simpleLoc:
-        if info.positionSimple[0]:
-            msg.positionSimple = [info.positionSimple[0], info.positionSimple[1]]
-        if info.headingSimple:
-            msg.headingSimple = info.headingSimple
-        # msg.path =  
-        return msg
-
-
     def cbLocalization(self, msg):
-        """
-        Callback when receiving online localization results
+        """ Callback when receiving online localization results
+        Checks if there are any new bots on the map
+        Reads the results from the online localization
+        Calls the Classifier for each bot that is currently not in rescue operation
+
+        Args: 
+            msg: ROS visualization message (MarkerArray)
         """
 
         for m in msg.markers:
@@ -198,30 +212,25 @@ class RescueTriggerNode(DTROS):
 
             # Store position from localization system in AutoboInfo()
             self.id_dict[idx].update_from_marker(m)
-            # print("[{}] heading: {}".format(idx, self.id_dict[idx].heading))
             # Filter position and update last_moved time stamp
             self.id_dict[idx].update_filtered(
-                m.header.stamp,
                 self.parameters['~dist_thres'],
                 self.parameters['~avg_window'],
             )
-             # publish autobot_info to rescue_agent
-            self.pub_autobot_info[idx].publish(self.autobotInfo2Msg(self.id_dict[idx]))
+            # publish autobot_info to rescue_agent
+            self.pub_autobot_info[idx].publish(self.id_dict[idx].autobotInfo2Msg())
 
             
             if self.id_dict[idx].in_rescue:
                 continue
             # If duckiebot is not in rescue, check classifier
-            self.currentTime = m.header.stamp
-            if self.id_dict[idx].last_movedSimple:
-                time_diff = self.currentTime.to_sec()-max(self.id_dict[idx].last_moved.to_sec(), self.id_dict[idx].last_movedSimple)
-            else:
-                time_diff = self.currentTime.to_sec()-self.id_dict[idx].last_moved.to_sec()
-            rescue_class = self.id_dict[idx].classifier(time_diff, self.map)
+            rescue_class = self.id_dict[idx].classifier(self.map)
             self.id_dict[idx].rescue_class = rescue_class
+
+            # TODO: make more general not just for duckiebot 27
             # For debugging
             if idx == 27:
-                print("[{}]: time diff[s]: {}".format(idx, time_diff))
+                print("[{}] with time_diff {}".format(idx, self.id_dict[idx].time_diff))
                 print("[{}] ({}) onRoad {}".format(idx, self.id_dict[idx].position, self.id_dict[idx].onRoad))
 
             if rescue_class.value != 0 and idx == 27:
@@ -238,11 +247,14 @@ class RescueTriggerNode(DTROS):
                 self.id_dict[idx].in_rescue = True
 
 
-    # Callback for fsm state
     def cbFSM(self, msg, veh_id):
+        """Callback when the fsm state of a bot changed
+        
+        Args: 
+            msg: ROS message (Float64Array)
+            veh_id: ID of duckiebot
         """
-        callback when the fsm state of a bot changed
-        """
+
         if veh_id in self.id_dict:
             self.log("Duckiebot [{}] FSM state <{}>".format(veh_id, msg.state))
             self.id_dict[veh_id].fsm_state = msg.state
@@ -250,7 +262,7 @@ class RescueTriggerNode(DTROS):
 
 if __name__ == '__main__':
     # create the node
-    node = RescueTriggerNode(node_name='rescue_trigger_node')
+    node = RescueCenterNode(node_name='rescue_trigger_node')
     # # run node
     # node.run()
     # keep spinning

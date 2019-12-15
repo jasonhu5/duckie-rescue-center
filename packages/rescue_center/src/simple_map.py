@@ -8,6 +8,7 @@ import yaml
 import re
 
 class SimpleMap():
+    
     ''' --- INITIALIZE --- '''
 
     def __init__(self, map_file):
@@ -193,7 +194,6 @@ class SimpleMap():
                 y = abs(tile.centers[0][1]*self.tile_size - (position[1] % self.tile_size))
                 if math.sqrt(x**2+y**2) > self.tile_size:
                     on_lane = 0
-                # print("Distances from center: x = {}, and y = {}".format(x,y))
             return on_lane
         else:
             if type(map) is not np.ndarray:
@@ -270,7 +270,7 @@ class SimpleMap():
         Returns:
             A position tuple (x,y) in [m] in localization coordinate system
             - inf for positions on 4/way or 3/way
-            - None if it cannot find a suitable exit (=surrounded by curves)
+            - None if it cannot find a suitable exit (e.g. surrounded by curves)
 
         """
         if self.get_tile(position) is not None:
@@ -305,7 +305,6 @@ class SimpleMap():
             coord_x = base_x - curve_sign_x * x * ((0.25+lane/2)*self.tile_size)/distance
             coord_y = base_y - curve_sign_y * y * ((0.25+lane/2)*self.tile_size)/distance
             coordinates = (coord_x, coord_y)
-            print("Calculated curve pos for base", base_x, base_y)
         elif tile.type == "asphalt":
             if heading is None: return None
             heading = int(heading)
@@ -325,7 +324,6 @@ class SimpleMap():
                         ideal_heading = self.pos_to_ideal_heading(exit_dir)
                         if ideal_heading is None: continue
                         ideal_heading = ideal_heading*math.pi/180
-                        #print("Cost: ", self.exit_cost(ideal_pos, position, rev_h, h, ideal_heading))
                         # Update cost and coordinates if better solution is found
                         if self.exit_cost(ideal_pos, position, rev_h, h, ideal_heading) < cost:
                             coordinates = ideal_pos
