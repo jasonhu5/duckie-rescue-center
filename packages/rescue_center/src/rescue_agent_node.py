@@ -302,7 +302,6 @@ class RescueAgentNode(DTROS):
                     self.veh_id, current_pos, current_heading))
 
                 # TODO: could incorporate an extra margin
-                if 
                 desired_pos = self.map.pos_to_ideal_position(
                     current_pos, heading=current_heading)
                 if desired_pos == None:
