@@ -315,7 +315,7 @@ class SimpleMap():
             for h in range(heading+90, heading+270):
                 h = self.normalize_angle(h, reverse=True)
                 # loop through a couple of distances (set resolution in range)
-                for d in np.arange(0, self.tile_size, self.tile_size/10):
+                for d in np.arange(0, self.tile_size/8, self.tile_size/(8*10)):
                     # calculate point and find ideal pos and heading
                     exit_dir = (position[0]+d*math.cos(h), position[1]+d*math.sin(h))
                     if not self.get_tile(exit_dir): continue

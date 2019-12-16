@@ -201,7 +201,7 @@ class RescueCenterNode(DTROS):
             # Append new bots to list if they show up the first time
             if not idx in self.veh_list:
                 self.veh_list.append(idx)
-                self.id_dict[idx] = AutobotInfo()
+                self.id_dict[idx] = AutobotInfo(idx)
                 # create relevant topic handlers for this bot
                 self.updateSubscriberPublisher(idx) 
                 # create rescue agent for this bot

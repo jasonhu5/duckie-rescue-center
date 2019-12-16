@@ -9,12 +9,13 @@ from rescue_center.msg import AutobotInfoMsg
 
 
 TIME_DIFF_THRESHOLD = 10
+ANGLE_TRHESHOLD = 70
 
 class AutobotInfo():
 
     ''' --- INITIALIZE --- '''
 
-    def __init__(self):
+    def __init__(self, veh_id):
         """Initilialize AutobotInfo object to default values
         no arguments required
 
@@ -32,6 +33,8 @@ class AutobotInfo():
         self.in_rescue = False
         self.onRoad = True
         self.rescue_class = Distress.NORMAL_OPERATION
+
+        self.veh_id = veh_id
         
     ''' --- UPDATE FUNCTION --- '''
 
@@ -123,28 +126,63 @@ class AutobotInfo():
             An instance of the Distress Class, normally NORMAL_OPERATION
 
         """
-        # only changed, if classfied
-        self.onRoad = map.position_on_map(self.position, subtile=True)
-        # calculate time difference
+        # update position and heading:
+        if self.positionSimple[0] is None :
+            # simple localization has not been triggered yet (duckiebot did not move) --> take normal localization output
+            current_pos = self.position  # (x, y)
+            current_heading = self.heading  # degree
+            print("Position from online loc", current_pos)
+        else:
+            # use simple localization
+            current_pos = self.positionSimple  # (x, y)
+            current_heading = self.headingSimple  # degree
+            print("Position from simple loc", current_pos)
+        # calculate onRoad
+        self.onRoad = map.position_on_map(current_pos, subtile=True)
+        # calculate time difference:
         if self.last_movedSimple:
             self.time_diff = self.timestamp-max(self.last_moved, self.last_movedSimple)
         else:
             self.time_diff = self.timestamp-self.last_moved
-        #print("Time_diff from classification: ", time_diff)
+        # calculate desired heading:
+        desired_heading = map.pos_to_ideal_heading(current_pos)
 
         # 0. debug mode: change through ros parameter
         debug_param = rospy.get_param('~trigger_rescue') # TODO: one for each autobot
         if debug_param:
             return Distress.DEBUG
-        # TODO: uncomment out_of_road case
-        # elif not self.onRoad:
-        #     self.rescue_class =  Distress.OUT_OF_LANE
-        # 2. stuck
-        elif self.time_diff > TIME_DIFF_THRESHOLD: #TODO: change this parameter
-            self.rescue_class =  Distress.STUCK
-        else:
-            self.rescue_class = Distress.NORMAL_OPERATION
-        return self.rescue_class #TODO: get rid off return and call the attribute in rescue_center_node
+        # 1. Out of lane 
+        if not self.onRoad:
+            self.rescue_class =  Distress.OUT_OF_LANE
+            return self.rescue_class
+        # 2. Wrong heading
+        delta_phi = abs(current_heading-desired_heading)
+        delta_phi = min(delta_phi, 360-delta_phi)      
+        if delta_phi > ANGLE_TRHESHOLD:
+            self.rescue_class = Distress.WRONG_HEADING
+            return self.rescue_class
+        # 3. stuck 
+        if self.time_diff > TIME_DIFF_THRESHOLD: 
+            print("[{}] stuck, FSM State: {}".format(self.veh_id, self.fsm_state))
+            # stuck at intersection 
+            if self.fsm_state == "INTERSECTION_CONTROL" or self.fsm_state == "INTERSECTION_COORDINATION":
+                # duckiebot at intersection
+                if self.time_diff > TIME_DIFF_THRESHOLD * 3:                      # TODO: parametrize
+                    self.rescue_class = Distress.STUCK_AT_INTERSECTION
+                    return self.rescue_class
+            tile_type = map.pos_to_semantic(current_pos)
+            # stuck in intersection
+            if tile_type ==  "intersection":
+                self.rescue_class = Distress.STUCK_IN_INTERSECTION
+                return self.rescue_class
+            # stuck general
+            self.rescue_class = Distress.STUCK_GENERAL
+            return self.rescue_class
+        # 4 everything ok
+        self.rescue_class = Distress.NORMAL_OPERATION
+        return self.rescue_class
+        
+         #TODO: get rid off returns and call the attribute in rescue_center_node
     
     
     ''' --- HELPER FUNCTIONS --- '''
@@ -168,8 +206,11 @@ class AutobotInfo():
 class Distress(Enum):
     NORMAL_OPERATION = 0
     OUT_OF_LANE = 1
-    STUCK = 2
-    DEBUG = 3
+    WRONG_HEADING = 2
+    STUCK_AT_INTERSECTION = 3
+    STUCK_IN_INTERSECTION = 4
+    STUCK_GENERAL = 5
+    DEBUG = 6
 
     # CRASHED_BOT = 2
     # CRASHED_INFRA = 3
