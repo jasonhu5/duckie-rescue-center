@@ -157,9 +157,14 @@ class RescueCenterNode(DTROS):
         
         self.id_dict[veh_id].positionSimple = (msg.data[1], msg.data[2])
         self.id_dict[veh_id].headingSimple = msg.data[3] 
+        # if self.id_dict[veh_id].lastPosititionSimple[0]:
+        #     distance = math.sqrt((self.id_dict[veh_id].positionSimple[0]-self.id_dict[veh_id].lastPosititionSimple[0])**2
+        #                         (self.id_dict[veh_id].positionSimple[1]-self.id_dict[veh_id].lastPosititionSimple[1])**2)
+        #     if distance > 0.02: 
+        #         self.id_dict[veh_id].last_movedSimple = msg.data[4] # in s
+        #         self.id_dict[veh_id].lastPosititionSimple = self.id_dict[veh_id].positionSimple
         self.id_dict[veh_id].last_movedSimple = msg.data[4] # in s
         self.pub_autobot_info[veh_id].publish(self.id_dict[veh_id].autobotInfo2Msg())
-
         # For debugging
         # position_ideal_debug = self.map.pos_to_ideal_position(self.id_dict[veh_id].positionSimple, heading=self.id_dict[veh_id].headingSimple)
         # print("[{}]current_pos: {}, ideal_pos: {}, onRoad: {}, heading: {}".format(veh_id,  

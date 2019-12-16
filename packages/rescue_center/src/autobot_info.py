@@ -28,13 +28,14 @@ class AutobotInfo():
         self.heading = None
         self.headingSimple = None
         self.last_moved = None
-        self.last_movedSimple = None
+        self.last_movedSimple = - float('inf')
         self.time_diff = None
         self.in_rescue = False
         self.onRoad = True
         self.rescue_class = Distress.NORMAL_OPERATION
 
         self.veh_id = veh_id
+        self.lastPosititionSimple = (None, None)
         
     ''' --- UPDATE FUNCTION --- '''
 
@@ -146,6 +147,7 @@ class AutobotInfo():
             self.time_diff = self.timestamp-self.last_moved
         # calculate desired heading:
         desired_heading = map.pos_to_ideal_heading(current_pos)
+        tile_type = map.pos_to_semantic(current_pos)
 
         # 0. debug mode: change through ros parameter
         debug_param = rospy.get_param('~trigger_rescue') # TODO: one for each autobot
@@ -155,10 +157,10 @@ class AutobotInfo():
         if not self.onRoad:
             self.rescue_class =  Distress.OUT_OF_LANE
             return self.rescue_class
-        # 2. Wrong heading
+        # 2. Wrong heading: only for lanes right now
         delta_phi = abs(current_heading-desired_heading)
         delta_phi = min(delta_phi, 360-delta_phi)      
-        if delta_phi > ANGLE_TRHESHOLD:
+        if delta_phi > ANGLE_TRHESHOLD and tile_type == 'straight':
             self.rescue_class = Distress.WRONG_HEADING
             return self.rescue_class
         # 3. stuck 
@@ -170,9 +172,8 @@ class AutobotInfo():
                 if self.time_diff > TIME_DIFF_THRESHOLD * 3:                      # TODO: parametrize
                     self.rescue_class = Distress.STUCK_AT_INTERSECTION
                     return self.rescue_class
-            tile_type = map.pos_to_semantic(current_pos)
             # stuck in intersection
-            if tile_type ==  "intersection":
+            if tile_type == '4way' or tile_type == '3way':
                 self.rescue_class = Distress.STUCK_IN_INTERSECTION
                 return self.rescue_class
             # stuck general

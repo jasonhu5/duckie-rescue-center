@@ -100,6 +100,8 @@ class RescueAgentNode(DTROS):
         self.currentPosition = (None, None)
         self.currentHeading = None
 
+        self.tileType = None
+
         # Subscriber
         self.sub_distress_classification = rospy.Subscriber("/{}/distress_classification".format(self.veh_name),
                                                             String, self.cb_distress_classification)
@@ -171,12 +173,17 @@ class RescueAgentNode(DTROS):
 
             desired_pos = self.map.pos_to_ideal_position(
             self.current_pos, heading=self.current_heading)
-            if desired_pos:
-                print("[{}] There is a desired position: {}.".format(
-                    self.veh_id, desired_pos))
-                self.desired_pos = desired_pos
+            if desired_pos is not None:
+                if desired_pos != float('inf'):
+                    print("[{}] There is a desired position: {}.".format(
+                        self.veh_id, desired_pos))
+                    self.desired_pos = desired_pos
+                else:
+                    print("[{}] Desired position is not on map") #TODO: how to rescue?
             else:
-                print("[{}] There is no desired position.".format(self.veh_id))
+                print("[{}] There is no desired position yet.".format(self.veh_id))
+            
+            print("[{}] Starting rescue operation now".format(self.veh_id))
 
 
     def readyForLF(self, recalculateDesired=True, tol_angle=TOL_ANGLE_IN_DEG, tol_pos=TOL_POSITION_IN_M):
@@ -214,7 +221,8 @@ class RescueAgentNode(DTROS):
             (desired_pos[0] - current_pos[0])**2 + (desired_pos[1] - current_pos[1])**2)
         print("delta_phi: {}, delta_d: {}".format(delta_phi, delta_d))
         if delta_d < tol_pos and delta_phi < tol_angle:
-            return True
+            if self.tileType != '4way' or self.tileType != '3way':
+                return True
         # if duckiebot is not back in lane
         return False
     
@@ -279,6 +287,7 @@ class RescueAgentNode(DTROS):
 
                 # --- GET CURRENT POSITION ---#
                 self.updatePositionAndHeading()
+                self.tileType = self.map.pos_to_semantic(self.current_pos)
                 print("[{}] Current: pos = {}, phi = {}".format(
                     self.veh_id, self.current_pos, self.current_heading))
 
@@ -286,7 +295,8 @@ class RescueAgentNode(DTROS):
                 desired_pos = self.map.pos_to_ideal_position(
                     self.current_pos, heading=self.current_heading)
                 # check, if at bad position
-                if desired_pos == None:
+                if desired_pos == float('inf') or desired_pos == None:
+                    # TODO: when does it return None again?
                     # No good rescue point found: e.g. on asphalt next to curves
                     print('[{}] no good point found! Going backwards now...'.format(self.veh_id))
                     self.current_car_cmd.v = -self.v_ref
@@ -297,21 +307,19 @@ class RescueAgentNode(DTROS):
                     self.stopDuckiebot()
                     sleep(T_STOP)
                     continue
-                # Check, if at intersection: 4-way or 3-way:
-                if desired_pos == float('inf'):
-                    print("[{}] at Intersection, check, if ready for LF".format(self.veh_id))
-                    self.stopDuckiebot()
-                    if self.desired_pos:
-                        if self.readyForLF(recalculateDesired=False):
-                            print("[{}] Ready for LF".format(self.veh_id))
-                            self.goBackToLF()
-                            # TODO: implement else case: go forward
-                        else: 
-                            # go forward: 
-                            self.current_car_cmd.v = self.v_ref
-                            self.current_car_cmd.omega = 0
-                            self.pub_car_cmd.publish(self.current_car_cmd)
-                        continue                        
+                # Check, if duckiebot drove into intersection: 4-way or 3-way:
+                if self.tileType == '4way' or self.tileType == '3way':
+                    if self.autobot_info.rescue_class != Distress.STUCK_IN_INTERSECTION: 
+                        print("[{}] drove into Intersection, check, if ready for LF".format(self.veh_id))
+                        self.stopDuckiebot()
+                        if self.desired_pos:
+                            if self.readyForLF(recalculateDesired=False):
+                                print("[{}] Ready for LF".format(self.veh_id))
+                                self.goBackToLF()
+                                # TODO: implement else case: go forward
+                            else: 
+                               self.autobot_info.rescue_class = Distress.STUCK_IN_INTERSECTION 
+                            continue                        
                 
                 # --- CALCULATE DESIRED HEADING--- #
                 self.desired_pos = desired_pos # need this, because I want to use the old desired_pos in case of an intersection
