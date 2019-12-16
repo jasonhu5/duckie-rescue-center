@@ -131,12 +131,12 @@ class AutobotInfo():
             # simple localization has not been triggered yet (duckiebot did not move) --> take normal localization output
             current_pos = self.position  # (x, y)
             current_heading = self.heading  # degree
-            print("Position from online loc", current_pos)
+            # print("Position from online loc", current_pos)
         else:
             # use simple localization
             current_pos = self.positionSimple  # (x, y)
             current_heading = self.headingSimple  # degree
-            print("Position from simple loc", current_pos)
+            # print("Position from simple loc", current_pos)
         # calculate onRoad
         self.onRoad = map.position_on_map(current_pos, subtile=True)
         # calculate time difference:
@@ -163,7 +163,7 @@ class AutobotInfo():
             return self.rescue_class
         # 3. stuck 
         if self.time_diff > TIME_DIFF_THRESHOLD: 
-            print("[{}] stuck, FSM State: {}".format(self.veh_id, self.fsm_state))
+            print("[{}] stuck, FSM State: {}".format(self.veh_id, type(self.fsm_state)))
             # stuck at intersection 
             if self.fsm_state == "INTERSECTION_CONTROL" or self.fsm_state == "INTERSECTION_COORDINATION":
                 # duckiebot at intersection

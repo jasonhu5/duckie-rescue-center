@@ -12,6 +12,8 @@ from simple_map import SimpleMap
 from autobot_info import AutobotInfo, Distress
 from nav_msgs.msg import Path
 from rescue_center.msg import AutobotInfoMsg
+from time import sleep
+
 
 class RescueCenterNode(DTROS):
     """Rescue Center Node
@@ -200,6 +202,7 @@ class RescueCenterNode(DTROS):
             idx = m.id
             # Append new bots to list if they show up the first time
             if not idx in self.veh_list:
+                print("Detected new duckiebot [{}]. Launching new rescue agent ...".format(idx))
                 self.veh_list.append(idx)
                 self.id_dict[idx] = AutobotInfo(idx)
                 # create relevant topic handlers for this bot
@@ -209,6 +212,8 @@ class RescueCenterNode(DTROS):
                     "roslaunch", "rescue_center",
                     "rescue_agent.launch", "botID:={}".format(idx)
                 ])
+                sleep(3)
+                print("Finished launching")
 
             # Store position from localization system in AutoboInfo()
             self.id_dict[idx].update_from_marker(m)

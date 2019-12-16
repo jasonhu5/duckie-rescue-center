@@ -8,7 +8,7 @@ import yaml
 import re
 
 class SimpleMap():
-    
+
     ''' --- INITIALIZE --- '''
 
     def __init__(self, map_file):
@@ -33,6 +33,8 @@ class SimpleMap():
         # https://docs.duckietown.org/daffy/opmanual_duckietown/out/dt_ops_appearance_specifications.html
         self.tile_size = tile_size
         self.margin = 0.08
+        self.toStop = 0.1
+        self.searchDivider = 4 # divider of tile_size
 
         # Tile specific orientation
         # - locations of center(s) of curve
@@ -233,22 +235,22 @@ class SimpleMap():
                 heading = lane*180
         elif tile.type == "curve":
             if(self.position_on_map(position, subtile=True)):
-                # get center of 1/4 circle (= curve)
-                center_x = tile.centers[0][0]
-                center_y = tile.centers[0][1]
+                heading = self.heading_in_curve(tile, tile_x, tile_y, position, 0)
+        elif tile.type == "3way" or tile.type == "4way":
+            # find closest center
+            closest_distance = float('inf')
+            for c in range(len(tile.centers)):
+                center = (tile.centers[c][0], tile.centers[c][1])
                 # calculate distance from center
-                x = abs(center_x*self.tile_size - (position[0] % self.tile_size))
-                y = abs(center_y*self.tile_size - (position[1] % self.tile_size))
-                # check if on inner or outer lane
-                lane = round(math.sqrt(x**2+y**2)/self.tile_size)
-                # convert center from binary to {-1;1} for atan2 calculations
-                curve_sign_x = 2*(center_x-0.5)
-                curve_sign_y = 2*(center_y-0.5)
-                # calculate angle in relative coordinate system
-                heading = -math.atan2(y*curve_sign_y,x*curve_sign_x)
-                # convert angle to global coordinate system and account for lane
-                # turn by 90 deg and reverse for other lane (+180 deg)
-                heading = self.normalize_angle((0.5+lane)*math.pi - heading)
+                x = abs(center[0]*self.tile_size - (position[0] % self.tile_size))
+                y = abs(center[1]*self.tile_size - (position[1] % self.tile_size))
+                # print("center = {}, distance = {}".format(center, x**2+y**2))
+                if x**2+y**2 < closest_distance:
+                    closest_distance = x**2+y**2
+                    closest = c
+            # print("Center found: ", tile.centers[closest])
+            # from now on treat as curves
+            heading = self.heading_in_curve(tile, tile_x, tile_y, position, closest)
         return heading
 
     def pos_to_ideal_position(self, position, heading=None):
@@ -278,9 +280,8 @@ class SimpleMap():
         else:
             return None
         tile = self.map_sem[(tile_x, tile_y)]
-        coordinates = None
-        if tile.type == "4way" or tile.type == "3way": coordinates = float('inf')
-        elif tile.type == "straight":
+        coordinates = float('inf')
+        if tile.type == "straight":
             if tile.boarders == ["N", "S"]:
                 lane = round((position[0] % self.tile_size)/self.tile_size)
                 coordinates = ((tile_x+0.25+lane/2)*self.tile_size, position[1])
@@ -288,22 +289,7 @@ class SimpleMap():
                 lane = round((position[1] % self.tile_size)/self.tile_size)
                 coordinates = (position[0], (tile_y+0.25+lane/2)*self.tile_size)
         elif tile.type == "curve":
-            center_x = tile.centers[0][0]
-            center_y = tile.centers[0][1]
-            # convert center from binary to {-1;1} for atan2 calculations
-            curve_sign_x = 2*(center_x-0.5)
-            curve_sign_y = 2*(center_y-0.5)
-            # calculate distance from center
-            x = abs(center_x*self.tile_size - (position[0] % self.tile_size))
-            y = abs(center_y*self.tile_size - (position[1] % self.tile_size))
-            # check if on inner or outer lane
-            lane = round(math.sqrt(x**2+y**2)/self.tile_size)
-            # calculate position using intercept theorem
-            base_x = (tile_x + center_x)*self.tile_size
-            base_y = (tile_y + center_y)*self.tile_size
-            distance = math.sqrt(x**2+y**2)
-            coord_x = base_x - curve_sign_x * x * ((0.25+lane/2)*self.tile_size)/distance
-            coord_y = base_y - curve_sign_y * y * ((0.25+lane/2)*self.tile_size)/distance
+            coord_x, coord_y = self.position_in_curve(tile, tile_x, tile_y, position, 0)
             coordinates = (coord_x, coord_y)
         elif tile.type == "asphalt":
             if heading is None: return None
@@ -315,7 +301,7 @@ class SimpleMap():
             for h in range(heading+90, heading+270):
                 h = self.normalize_angle(h, reverse=True)
                 # loop through a couple of distances (set resolution in range)
-                for d in np.arange(0, self.tile_size/8, self.tile_size/(8*10)):
+                for d in np.arange(0, self.tile_size/self.searchDivider, self.tile_size/(self.searchDivider*5)):
                     # calculate point and find ideal pos and heading
                     exit_dir = (position[0]+d*math.cos(h), position[1]+d*math.sin(h))
                     if not self.get_tile(exit_dir): continue
@@ -328,6 +314,34 @@ class SimpleMap():
                         if self.exit_cost(ideal_pos, position, rev_h, h, ideal_heading) < cost:
                             coordinates = ideal_pos
                             cost = self.exit_cost(ideal_pos, position, rev_h, h, ideal_heading)
+        # elif tile.type == '4way':
+        #     # find position on intersection
+        #     quarter_x = round((position[0]%self.tile_size)/self.tile_size)
+        #     quarter_y = round((position[1]%self.tile_size)/self.tile_size)
+        #     straight_sign_x = 2*(quarter_x-0.5)
+        #     straight_sign_y = 2*(quarter_y-0.5)
+        #     print(quarter_x, quarter_y)
+        #     if bool(quarter_x) != bool(quarter_y):
+        #         coord_x = position[0]
+        #         coord_y = ((1-quarter_x) + tile_y)*self.tile_size + straight_sign_y*self.toStop
+        #     else:
+        #         coord_x = (quarter_y + tile_x)*self.tile_size + straight_sign_x*self.toStop
+        #         coord_y = position[1]
+        #     coordinates = self.pos_to_ideal_position((coord_x, coord_y))
+        elif tile.type == '3way' or tile.type == '4way':
+            # find closest center
+            closest_distance = float('inf')
+            for c in range(len(tile.centers)):
+                center = (tile.centers[c][0], tile.centers[c][1])
+                # calculate distance from center
+                x = abs(center[0]*self.tile_size - (position[0] % self.tile_size))
+                y = abs(center[1]*self.tile_size - (position[1] % self.tile_size))
+                if x**2+y**2 < closest_distance:
+                    closest_distance = x**2+y**2
+                    closest = c
+            # from now on treat as curves
+            coord_x, coord_y = self.position_in_curve(tile, tile_x, tile_y, position, closest)
+            coordinates = (coord_x, coord_y)
         return coordinates
 
 
@@ -425,6 +439,43 @@ class SimpleMap():
             # Penalize distance and rotations (decent parameters 20, 0.5, 0.5)
             cost = distance*20 + first_rotation*0.5 + second_rotation*0.5
         return cost
+
+    def heading_in_curve(self, tile, tile_x, tile_y, position, center_index):
+        center_x = tile.centers[center_index][0]
+        center_y = tile.centers[center_index][1]
+        # calculate distance from center
+        x = abs(center_x*self.tile_size - (position[0] % self.tile_size))
+        y = abs(center_y*self.tile_size - (position[1] % self.tile_size))
+        # check if on inner or outer lane
+        lane = round(math.sqrt(x**2+y**2)/self.tile_size)
+        # convert center from binary to {-1;1} for atan2 calculations
+        curve_sign_x = 2*(center_x-0.5)
+        curve_sign_y = 2*(center_y-0.5)
+        # calculate angle in relative coordinate system
+        heading = -math.atan2(y*curve_sign_y,x*curve_sign_x)
+        # convert angle to global coordinate system and account for lane
+        # turn by 90 deg and reverse for other lane (+180 deg)
+        heading = self.normalize_angle((0.5+lane)*math.pi - heading)
+        return heading
+
+    def position_in_curve(self, tile, tile_x, tile_y, position, center_index):
+        center_x = tile.centers[center_index][0]
+        center_y = tile.centers[center_index][1]
+        # convert center from binary to {-1;1} for atan2 calculations
+        curve_sign_x = 2*(center_x-0.5)
+        curve_sign_y = 2*(center_y-0.5)
+        # calculate distance from center
+        x = abs(center_x*self.tile_size - (position[0] % self.tile_size))
+        y = abs(center_y*self.tile_size - (position[1] % self.tile_size))
+        # check if on inner or outer lane
+        lane = round(math.sqrt(x**2+y**2)/self.tile_size)
+        # calculate position using intercept theorem
+        base_x = (tile_x + center_x)*self.tile_size
+        base_y = (tile_y + center_y)*self.tile_size
+        distance = math.sqrt(x**2+y**2)
+        coord_x = base_x - curve_sign_x * x * ((0.25+lane/2)*self.tile_size)/distance
+        coord_y = base_y - curve_sign_y * y * ((0.25+lane/2)*self.tile_size)/distance
+        return coord_x, coord_y
 
     def normalize_angle(self, angle, reverse=False):
         # reverse=False (default):
