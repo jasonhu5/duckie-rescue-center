@@ -86,6 +86,7 @@ class RescueCenterNode(DTROS):
         self.sub_fsm_states = dict()
         self.sub_everythingOk = dict()
         self.pub_autobot_info = dict()
+        self.pub_rescue_stopped = dict()
 
         # build simpleMap
         # TODO: pull a duckietownworld fork in container
@@ -138,6 +139,18 @@ class RescueCenterNode(DTROS):
             queue_size=5,
         )
 
+        #6. Subscriber: Rescue stopped (not finished)
+        self.pub_rescue_stopped[veh_id] = rospy.Subscriber(
+            "/rescue/rescue_agents/autobot{}/rescueStopped/".format(veh_id), BoolStamped, self.cbRescueStopped,
+            callback_args=veh_id)
+
+    def cbRescueStopped(self, msg, veh_id):
+        """Callback if rescue is stopped, but not finished"""
+        print("Received rescue stopped!")
+        if msg.data == True:
+            self.id_dict[veh_id].in_rescue = False
+            self.id_dict[veh_id].last_moved = self.id_dict[veh_id].timestamp
+            
 
     def cbSimpleLoc(self, msg):
         """Callback of SimpleLoc, reads message, stores position and heading in
@@ -230,7 +243,30 @@ class RescueCenterNode(DTROS):
             # publish autobot_info to rescue_agent
             self.pub_autobot_info[idx].publish(self.id_dict[idx].autobotInfo2Msg())
 
-            
+            # add duckiebots to being monitored:
+            change_monitored_duckiebots = rospy.get_param('~change_monitored_duckiebots') 
+            if change_monitored_duckiebots:
+                print("Please specify, which duckiebot to monitor")
+                add_duckiebot = rospy.get_param('~add_duckiebot')
+                remove_duckiebot = rospy.get_param('~remove_duckiebot')
+                if add_duckiebot in self.id_dict and self.id_dict[add_duckiebot].monitoringActivated == False:
+                    self.id_dict[add_duckiebot].monitoringActivated = True
+                    # to prevent time_diff being triggered
+                    self.id_dict[add_duckiebot].last_moved = m.header.stamp.to_sec()
+                    self.id_dict[add_duckiebot].last_movedSimple = m.header.stamp.to_sec()
+                    print("[{}] is now being monitored for rescue.".format(add_duckiebot))
+                    rospy.set_param('~add_duckiebot', -1)
+                    rospy.set_param('~change_monitored_duckiebots', False)
+                if remove_duckiebot in self.id_dict:
+                    self.id_dict[remove_duckiebot].monitoringActivated = False
+                    print("[{}] is not being monitored for rescue.".format(remove_duckiebot))
+                    rospy.set_param('~remove_duckiebot', -1) 
+                    rospy.set_param('~change_monitored_duckiebots', False)
+
+            # check, if we want to monitor that duckiebot
+            if self.id_dict[idx].monitoringActivated == False:
+                continue
+
             if self.id_dict[idx].in_rescue:
                 continue
             # If duckiebot is not in rescue, check classifier

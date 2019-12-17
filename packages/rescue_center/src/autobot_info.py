@@ -8,7 +8,7 @@ from visualization_msgs.msg import Marker, MarkerArray
 from rescue_center.msg import AutobotInfoMsg
 
 
-TIME_DIFF_THRESHOLD = 10
+TIME_DIFF_THRESHOLD = 100
 ANGLE_TRHESHOLD = 70
 
 class AutobotInfo():
@@ -36,6 +36,7 @@ class AutobotInfo():
 
         self.veh_id = veh_id
         self.lastPosititionSimple = (None, None)
+        self.monitoringActivated  = False
         
     ''' --- UPDATE FUNCTION --- '''
 
@@ -107,6 +108,8 @@ class AutobotInfo():
             msg.positionSimple = [self.positionSimple[0], self.positionSimple[1]]
         if self.headingSimple:
             msg.headingSimple = self.headingSimple
+        
+        msg.monitoringActivated = self.monitoringActivated
         return msg    
 
     ''' --- DISTRESS CLASSIFIER --- '''

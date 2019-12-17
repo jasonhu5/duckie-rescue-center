@@ -23,3 +23,11 @@ For reference: [unicode characters used for map visualization](https://www.compa
 
 # Visualization
   docker run -it --rm --net=host --env="DISPLAY" -e ROS_MASTER=duckietown9 -e ROS_MASTER_IP=192.168.1.187 -e DUCKIETOWN_WORLD_FORK=jasonhu5 -e MAP_NAME=ethz_amod_lab_k31 duckietown/dt-autolab-rviz
+
+
+# 
+
+rosparam set /rescue/rescue_center/add_duckiebot 27
+rosparam set /rescue/rescue_center/change_monitored_duckiebots true
+rosparam set /rescue/rescue_center/remove_duckiebot 27
+

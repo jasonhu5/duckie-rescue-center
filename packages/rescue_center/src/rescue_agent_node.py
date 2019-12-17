@@ -123,6 +123,8 @@ class RescueAgentNode(DTROS):
             String,
             queue_size=1,
         )
+        self.pub_rescueStopped = rospy.Publisher(
+            "{}/rescueStopped/".format(self.veh_name), BoolStamped, queue_size=1)
 
     def cb_autobot_info(self, msg):
         """Callback function triggered by self.sub_autobot_info:
@@ -147,6 +149,7 @@ class RescueAgentNode(DTROS):
         self.autobot_info.headingSimple = msg.headingSimple
         self.autobot_info.positionSimple = (
             msg.positionSimple[0], msg.positionSimple[1])
+        self.autobot_info.monitoringActivated = msg.monitoringActivated
 
     def cb_distress_classification(self, msg):
         """Callback function triggered by self.sub_distress_classification:
@@ -283,6 +286,15 @@ class RescueAgentNode(DTROS):
 
         while not rospy.is_shutdown():
             if self.activated:
+                # monitoring is deactivated
+                if self.autobot_info.monitoringActivated == False:
+                    self.activated = False
+                    self.stopDuckiebot()
+                    print("[{}] Monitoring deactivated in rescue: stop duckiebot")
+                    msg = BoolStamped()
+                    msg.data = True
+                    self.pub_rescueStopped.publish(msg)
+                    self.controller_counter = 0
                 # in rescue operation
 
                 # --- GET CURRENT POSITION ---#
