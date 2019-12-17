@@ -31,3 +31,9 @@ rosparam set /rescue/rescue_center/add_duckiebot 27
 rosparam set /rescue/rescue_center/change_monitored_duckiebots true
 rosparam set /rescue/rescue_center/remove_duckiebot 27
 
+
+
+# Martins Questions
+- Who triggers the FSM state change again? 
+    - by rescue_center: /autobot[veh_id]/recovery_mode 
+    - by rescue_agent: /autobot[veh_id]/rescueDone/

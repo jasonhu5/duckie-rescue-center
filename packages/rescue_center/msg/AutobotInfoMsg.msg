@@ -11,5 +11,4 @@ float64 last_movedSimple
 bool in_rescue
 bool onRoad
 int8 rescue_class
-bool monitoringActivated
-# path = list() 
+bool classificationActivated

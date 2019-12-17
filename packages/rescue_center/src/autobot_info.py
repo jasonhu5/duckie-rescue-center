@@ -24,9 +24,12 @@ class AutobotInfo():
         self.fsm_state = None
         self.position = (None, None)
         self.positionSimple = (None, None)
+        self.current_pos = (None, None)
         self.filtered = (float('inf'), float('inf'))
         self.heading = None
         self.headingSimple = None
+        self.current_heading = None
+
         self.last_moved = None
         self.last_movedSimple = - float('inf')
         self.time_diff = None
@@ -35,10 +38,23 @@ class AutobotInfo():
         self.rescue_class = Distress.NORMAL_OPERATION
 
         self.veh_id = veh_id
-        self.lastPosititionSimple = (None, None)
-        self.monitoringActivated  = False
+        self.classificationActivated  = False
+        self.delta_phi = None
+        self.tile_type = None
         
     ''' --- UPDATE FUNCTION --- '''
+
+    def updatePositionAndHeading(self):
+        """ Updates current position and heading, depending on simple localization is on or off
+        """
+        if (self.positionSimple[0] == 0 and self.positionSimple[1] == 0) or self.positionSimple[0] == None:
+            # simple localization has not been triggered yet (duckiebot did not move) --> take normal localization output
+            self.current_pos = self.position  # (x, y)
+            self.current_heading = self.heading  # degree
+        else:
+            # use simple localization
+            self.current_pos = self.positionSimple  # (x, y)
+            self.current_heading = self.headingSimple  # degree
 
     def update_from_marker(self, m):
         """Method to update the AutobotInfo object from its ROS message
@@ -55,7 +71,7 @@ class AutobotInfo():
         self.position = (m.pose.position.x, m.pose.position.y)
         self.heading = self.quat2angle(m.pose.orientation)
 
-    def update_filtered(self, threshold, window):
+    def update_filtered(self, threshold):
         """Updates position value and timestamp only when movement detectd
 
         Args:
@@ -66,11 +82,6 @@ class AutobotInfo():
         if self.distance(self.position, self.filtered) > threshold:
             self.filtered = self.position
             self.last_moved = self.timestamp
-            print("moved")
-        # Filter currently not used, probably unnecessary
-        # else:
-        #     self.filtered = self.avg_filter(self.position, self.filtered, 1/window)
-
 
     ''' --- ASSEMBLE ROS MESSAGE --- '''
 
@@ -109,7 +120,7 @@ class AutobotInfo():
         if self.headingSimple:
             msg.headingSimple = self.headingSimple
         
-        msg.monitoringActivated = self.monitoringActivated
+        msg.classificationActivated = self.classificationActivated
         return msg    
 
     ''' --- DISTRESS CLASSIFIER --- '''
@@ -131,42 +142,25 @@ class AutobotInfo():
 
         """
         # update position and heading:
-        if self.positionSimple[0] is None :
-            # simple localization has not been triggered yet (duckiebot did not move) --> take normal localization output
-            current_pos = self.position  # (x, y)
-            current_heading = self.heading  # degree
-            # print("Position from online loc", current_pos)
-        else:
-            # use simple localization
-            current_pos = self.positionSimple  # (x, y)
-            current_heading = self.headingSimple  # degree
-            # print("Position from simple loc", current_pos)
-        # calculate onRoad
-        self.onRoad = map.position_on_map(current_pos, subtile=True)
-        # calculate time difference:
-        if self.last_movedSimple:
-            self.time_diff = self.timestamp-max(self.last_moved, self.last_movedSimple)
-        else:
-            self.time_diff = self.timestamp-self.last_moved
-        # calculate desired heading:
-        desired_heading = map.pos_to_ideal_heading(current_pos)
-        tile_type = map.pos_to_semantic(current_pos)
+        self.updatePositionAndHeading()       
+        self.tile_type = map.pos_to_semantic(self.current_pos)
 
         # 0. debug mode: change through ros parameter
         debug_param = rospy.get_param('~trigger_rescue') # TODO: one for each autobot
         if debug_param:
             return Distress.DEBUG
         # 1. Out of lane 
-        if not self.onRoad:
-            self.rescue_class =  Distress.OUT_OF_LANE
-            return self.rescue_class
+        if not self.positionOnRoad(map):
+            return Distress.OUT_OF_LANE
         # 2. Wrong heading: only for lanes right now
-        delta_phi = abs(current_heading-desired_heading)
-        delta_phi = min(delta_phi, 360-delta_phi)      
-        if delta_phi > ANGLE_TRHESHOLD and tile_type == 'straight':
-            self.rescue_class = Distress.WRONG_HEADING
-            return self.rescue_class
+        if self.wrongHeading(map):
+            return Distress.WRONG_HEADING
         # 3. stuck 
+        if self.last_movedSimple:
+            self.time_diff = self.timestamp-max(self.last_moved, self.last_movedSimple)
+        else:
+            self.time_diff = self.timestamp-self.last_moved
+
         if self.time_diff > TIME_DIFF_THRESHOLD: 
             print("[{}] stuck, FSM State: {}".format(self.veh_id, type(self.fsm_state)))
             # stuck at intersection 
@@ -174,26 +168,58 @@ class AutobotInfo():
                 # duckiebot at intersection
                 print("[{}] at intersection.".format(self.veh_id))
                 if self.time_diff > TIME_DIFF_THRESHOLD * 3:                      # TODO: parametrize
-                    self.rescue_class = Distress.STUCK_AT_INTERSECTION
-                    return self.rescue_class
+                    return Distress.STUCK_AT_INTERSECTION
                 else: 
-                    self.rescue_class = Distress.NORMAL_OPERATION
-                    return self.rescue_class
+                    return Distress.NORMAL_OPERATION
             # stuck in intersection
-            if tile_type == '4way' or tile_type == '3way':
-                self.rescue_class = Distress.STUCK_IN_INTERSECTION
-                return self.rescue_class
+            if self.tile_type == '4way' or self.tile_type == '3way':
+                return  Distress.STUCK_IN_INTERSECTION
             # stuck general
-            self.rescue_class = Distress.STUCK_GENERAL
-            return self.rescue_class
+            return Distress.STUCK_GENERAL
         # 4 everything ok
         self.rescue_class = Distress.NORMAL_OPERATION
-        return self.rescue_class
-        
-         #TODO: get rid off returns and call the attribute in rescue_center_node
-    
+        return Distress.NORMAL_OPERATION    
     
     ''' --- HELPER FUNCTIONS --- '''
+
+    def positionOnRoad(self, map):
+        self.onRoad = map.position_on_map(self.current_pos, subtile=True)
+        return self.onRoad
+    
+    def wrongHeading(self, map):
+        desired_heading = map.pos_to_ideal_heading(self.current_pos)
+        delta_phi = abs(self.current_heading-desired_heading)
+        self.delta_phi = min(delta_phi, 360-delta_phi)      
+        if  self.delta_phi > ANGLE_TRHESHOLD and self.tile_type == 'straight':
+            return True
+        return False
+            
+    # def stuck(self):
+    #     # calculate time_diff
+    #     if self.last_movedSimple:
+    #         self.time_diff = self.timestamp-max(self.last_moved, self.last_movedSimple)
+    #     else:
+    #         self.time_diff = self.timestamp-self.last_moved
+    #     if self.time_diff > TIME_DIFF_THRESHOLD: 
+    #         print("[{}] has not moved for more than {} s. Check if at intersection".format(self.veh_id, type(TIME_DIFF_THRESHOLD)))
+    #         # stuck at intersection 
+    #         if self.fsm_state == "INTERSECTION_CONTROL" or self.fsm_state == "INTERSECTION_COORDINATION":
+    #             # duckiebot at intersection
+    #             if self.time_diff > TIME_DIFF_THRESHOLD * 3:            
+    #                 self.rescue_class = Distress.STUCK_AT_INTERSECTION
+    #                 return self.rescue_class
+    #             else: 
+    #                 print("[{}] at intersection: will wait a little longer to classify as stuck")
+    #                 self.rescue_class = Distress.NORMAL_OPERATION
+    #                 return self.rescue_class
+    #         # stuck in intersection
+    #         if self.tile_type == '4way' or self.tile_type == '3way':
+    #             self.rescue_class = Distress.STUCK_IN_INTERSECTION
+    #             return self.rescue_class
+    #         # stuck general
+    #         self.rescue_class = Distress.STUCK_GENERAL
+    #         return self.rescue_class
+        
 
     def quat2angle(self, q):
         siny_cosp = 2 * (q.w*q.z + q.x*q.y)

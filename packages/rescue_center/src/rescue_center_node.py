@@ -34,8 +34,9 @@ class RescueCenterNode(DTROS):
             - pub_trigger
             - pub_rescue_classfication
             - sub_fsm_states
-            - sub_everythingOk
+            - sub_rescueDone
             - pub_autobot_info
+            - sub_rescue_stopped
 
     Subscriber:
         - sub_markers: /cslam_markers (:obj:`MarkerArray`): 
@@ -44,12 +45,15 @@ class RescueCenterNode(DTROS):
             Position and heading of the bots from the SimpleLoc system
         - sub_fsm_states[veh_id]: /autobot{}/fsm_mode (:obj:`FSMstate`)
             FSM state from every duckiebot
-        - sub_everythingOk[veh_id]: /rescue/rescue_agents/autobot{}/rescueDone (:obj:`BoolStamped`)
+        - sub_rescueDone[veh_id]: /rescue/rescue_agents/autobot{}/rescueDone (:obj:`BoolStamped`)
             Used to get the signal from the rescue agent, that a rescue operation is done
+        - sub_rescueStopped[veh_id]: /rescue/rescue_agents/autobot{}/rescueStopped (:obj:`BoolStamped`)
+            Used to get the signal from the rescue agent, that a rescue operation has been stopped, without being finished
+            (if monitoring is deactivated during rescue operation)
 
     Publisher:
         - pub_trigger[veh_id]: /autobot{}/recovery_mode (:obj:`BoolStamped`): 
-            Triggers the recovery mode for a certain bot and activates its rescue agent 
+            Triggers the recovery mode for a certain bot (FSM state change) and activates its rescue agent 
         - pub_rescue_classfication[veh_id]: ~/autobot{}/distress_classification (:obj: `String`):
             Gives the result of the latest classification to each rescue agent
         - pub_autobot_info[veh_id]: /autobot{}/autobot_info (:obj: `AutobotInfoMsg`):
@@ -67,10 +71,9 @@ class RescueCenterNode(DTROS):
         self.id_dict = dict()
 
         ## parameters
-        # threshold distance to consider bot not moving
-        self.parameters['~dist_thres'] = 0.01 # TODO: tune parameter
+        # threshold distance to consider bot not moving ()
+        self.parameters['~dist_thres'] = 0.01
         # number of windows to use for filtering, currently not used
-        self.parameters['~avg_window'] = 10 # TODO. tune parameter
         self.updateParameters()
 
         # Subscribe to topics online localization
@@ -84,12 +87,12 @@ class RescueCenterNode(DTROS):
         self.pub_trigger = dict()
         self.pub_rescue_classfication = dict()
         self.sub_fsm_states = dict()
-        self.sub_everythingOk = dict()
+        self.sub_rescueDone = dict()
         self.pub_autobot_info = dict()
-        self.pub_rescue_stopped = dict()
+        self.sub_rescue_stopped = dict()
 
         # build simpleMap
-        # TODO: pull a duckietownworld fork in container
+        # TODO: @Jason pull a duckietownworld fork in container
         map_file_path = os.path.join(
             "/code/catkin_ws/src",
             "duckie-rescue-center/packages/rescue_center/src",
@@ -97,6 +100,8 @@ class RescueCenterNode(DTROS):
         )
         self.map = SimpleMap(map_file_path)
         self.map.display_raw_debug()
+
+        print{"Rescue Center is initialized!"}
 
 
     def updateSubscriberPublisher(self, veh_id):
@@ -126,10 +131,10 @@ class RescueCenterNode(DTROS):
             callback_args=veh_id
         )
         # 4. Subscriber: EverythingOK from Rescue_agend
-        self.sub_everythingOk[veh_id] = rospy.Subscriber(
+        self.sub_rescueDone[veh_id] = rospy.Subscriber(
             "/rescue/rescue_agents/autobot{}/rescueDone".format(veh_id),
             BoolStamped,
-            self.cbEverythingOk,
+            self.cbRescueDone,
             callback_args=veh_id
         )
         # 5. Publisher: AutobotInfo Msg
@@ -139,22 +144,46 @@ class RescueCenterNode(DTROS):
             queue_size=5,
         )
 
-        #6. Subscriber: Rescue stopped (not finished)
-        self.pub_rescue_stopped[veh_id] = rospy.Subscriber(
+        # 6. Subscriber: Rescue stopped (not finished)
+        self.sub_rescue_stopped[veh_id] = rospy.Subscriber(
             "/rescue/rescue_agents/autobot{}/rescueStopped/".format(veh_id), BoolStamped, self.cbRescueStopped,
             callback_args=veh_id)
 
     def cbRescueStopped(self, msg, veh_id):
-        """Callback if rescue is stopped, but not finished"""
-        print("Received rescue stopped!")
+        """Callback of RescueStopped:
+            - gets triggered, if rescue_agent has stopped rescue, but rescue is not finished yet. 
+            (happens, if autobot is stopped being monitored during a rescue operation)
+    
+        Args: 
+            msg: ROS message (BoolStamped)
+            veh_id: autobot ID
+        """
         if msg.data == True:
+            # Note: this should always be the case
+            print("[{}] Received rescue stopped! rescue Center will take back from rescue agent ".format(veh_id))
             self.id_dict[veh_id].in_rescue = False
             self.id_dict[veh_id].last_moved = self.id_dict[veh_id].timestamp
             
+    def cbFSM(self, msg, veh_id):
+            """Callback when the fsm state of a bot changed
+            
+            Args: 
+                msg: ROS message (Float64Array)
+                veh_id: ID of duckiebot
+            """
+
+            if veh_id in self.id_dict:
+                self.log("Duckiebot [{}] FSM state changed from <{}> to <{}>".format(veh_id, 
+                        self.id_dict[veh_id].fsm_state, msg.state))
+                self.id_dict[veh_id].fsm_state = msg.state
 
     def cbSimpleLoc(self, msg):
-        """Callback of SimpleLoc, reads message, stores position and heading in
-        AutobotInfo and publishes it
+        """Callback of simpleLoc: 
+                - stores position and heading from simple Localization into the corresponding AutobotInfo() dictionary
+                (Note: simpleLoc publishes for one duckiebot at a time)
+                - determines msg timestamp as the time, where the duckiebot has moved last 
+                (Note: simpleLoc only publishes, if duckiebot moved)
+                - publishes autobotInfo to corresponding duckiebot
         
         Args: 
             msg: ROS message (Float64MultiArray)
@@ -162,19 +191,17 @@ class RescueCenterNode(DTROS):
 
         veh_id = int(msg.data[0])
         if veh_id in self.id_dict:
+            # make sure duckiebot has already been spotted by global localization 
+            # (need it, in case simpleLoc msg comes in before the first /cslam msg)
             self.id_dict[veh_id].positionSimple = (msg.data[1], msg.data[2])
             self.id_dict[veh_id].headingSimple = msg.data[3]
-        # if self.id_dict[veh_id].lastPosititionSimple[0]:
-        #     distance = math.sqrt((self.id_dict[veh_id].positionSimple[0]-self.id_dict[veh_id].lastPosititionSimple[0])**2
-        #                         (self.id_dict[veh_id].positionSimple[1]-self.id_dict[veh_id].lastPosititionSimple[1])**2)
-        #     if distance > 0.02: 
-        #         self.id_dict[veh_id].last_movedSimple = msg.data[4] # in s
-        #         self.id_dict[veh_id].lastPosititionSimple = self.id_dict[veh_id].positionSimple
         self.id_dict[veh_id].last_movedSimple = msg.data[4] # in s
         self.pub_autobot_info[veh_id].publish(self.id_dict[veh_id].autobotInfo2Msg())
     
-    def cbEverythingOk(self, msg, veh_id):
+    def cbRescueDone(self, msg, veh_id):
         """Callback of RescueAgent, which signals that the rescue operation is over
+         - rescue center will take over from rescue_agent
+         - trigger state change from "Recovery" to "Lane Following" 
         
         Args: 
             msg: ROS message (Float64Array)
@@ -186,26 +213,27 @@ class RescueCenterNode(DTROS):
             self.id_dict[veh_id].last_moved = self.id_dict[veh_id].timestamp
             msg = BoolStamped()
             msg.data = False
-            self.pub_trigger[veh_id].publish(msg)
+            self.pub_trigger[veh_id].publish(msg) # turns on lane following
 
 
     def cbLocalization(self, msg):
-        """ Callback when receiving online localization results
-        Checks if there are any new bots on the map
-        Reads the results from the online localization
-        Calls the Classifier for each bot that is currently not in rescue operation
+        """ Callback when receiving online localization results:
+            Checks if there are any new bots on the map
+            saves position/heading/lastMoved into corresponding autobotInfo
+            calls the Classifier for each bot that is currently not in rescue operation and for which rescue is activated
 
         Args: 
             msg: ROS visualization message (MarkerArray)
         """
 
         for m in msg.markers:
+            
             # care only about duckiebots
             if m.ns != "duckiebots":
                 continue
 
             idx = m.id
-            # Append new bots to list if they show up the first time
+            # Append new bots to veh_list if they show up the first time and launch a rescue_agent
             if not idx in self.veh_list:
                 print("Detected new duckiebot [{}]. Launching new rescue agent ...".format(idx))
                 self.veh_list.append(idx)
@@ -224,52 +252,49 @@ class RescueCenterNode(DTROS):
             self.id_dict[idx].update_from_marker(m)
             # Filter position and update last_moved time stamp
             self.id_dict[idx].update_filtered(
-                self.parameters['~dist_thres'],
-                self.parameters['~avg_window'],
+                self.parameters['~dist_thres']
             )
             # publish autobot_info to rescue_agent
             self.pub_autobot_info[idx].publish(self.id_dict[idx].autobotInfo2Msg())
 
-            # add duckiebots to being monitored:
-            change_monitored_duckiebots = rospy.get_param('~change_monitored_duckiebots') 
-            if change_monitored_duckiebots:
-                print("Please specify, which duckiebot to monitor")
+            # Check, if duckiebot should be classified:
+            change_classified_duckiebots = rospy.get_param('~change_classified_duckiebots') 
+            if change_classified_duckiebots:
+                print("[Classification]: Please specify, which duckiebot to add or remove")
                 add_duckiebot = rospy.get_param('~add_duckiebot')
                 remove_duckiebot = rospy.get_param('~remove_duckiebot')
-                if add_duckiebot in self.id_dict and self.id_dict[add_duckiebot].monitoringActivated == False:
-                    self.id_dict[add_duckiebot].monitoringActivated = True
+                if add_duckiebot in self.id_dict and self.id_dict[add_duckiebot].classificationActivated == False:
+                    self.id_dict[add_duckiebot].classificationActivated = True
                     # to prevent time_diff being triggered
                     self.id_dict[add_duckiebot].last_moved = m.header.stamp.to_sec()
                     self.id_dict[add_duckiebot].last_movedSimple = m.header.stamp.to_sec()
-                    print("[{}] is now being monitored for rescue.".format(add_duckiebot))
+                    print("[{}] is now being classified for rescue.".format(add_duckiebot))
                     rospy.set_param('~add_duckiebot', -1)
-                    rospy.set_param('~change_monitored_duckiebots', False)
+                    rospy.set_param('~change_classified_duckiebots', False)
                 if remove_duckiebot in self.id_dict:
-                    self.id_dict[remove_duckiebot].monitoringActivated = False
-                    print("[{}] is not being monitored for rescue.".format(remove_duckiebot))
+                    self.id_dict[remove_duckiebot].classificationActivated = False
+                    print("[{}] is not being classified for rescue.".format(remove_duckiebot))
                     rospy.set_param('~remove_duckiebot', -1) 
-                    rospy.set_param('~change_monitored_duckiebots', False)
+                    rospy.set_param('~change_classified_duckiebots', False)
 
-            # check, if we want to monitor that duckiebot
-            if self.id_dict[idx].monitoringActivated == False:
+            # continue, if we don't want to classify that duckiebot
+            if self.id_dict[idx].classificationActivated == False:
                 continue
 
+            # continue, if duckiebot is in rescue 
             if self.id_dict[idx].in_rescue:
                 continue
-            # If duckiebot is not in rescue, check classifier
+
+            # Classify duckiebot
             rescue_class = self.id_dict[idx].classifier(self.map)
             self.id_dict[idx].rescue_class = rescue_class
 
-            # TODO: make more general not just for duckiebot 27
-            # For debugging
-            if idx == 27:
-                print("[{}] with time_diff {}".format(idx, self.id_dict[idx].time_diff))
-                print("[{}] ({}) onRoad {}".format(idx, self.id_dict[idx].position, self.id_dict[idx].onRoad))
+            print("[{}] not moved for: {}, onRoad: {}, delta_phi: {}, tile_type: {}".format(idx,
+                 self.id_dict[idx].time_diff, self.id_dict[idx].onRoad, self.id_dict[idx].delta_phi, self.id_dict[idx].tile_type))
 
-            if rescue_class.value != 0 and idx == 27:
+            if rescue_class.value != 0:
                 # publish rescue_class
-                self.log(
-                    "Duckiebot [{}] in distress <{}>".format(idx, rescue_class))
+                print("[{}] in distress <{}>".format(idx, rescue_class))
                 msg = BoolStamped()
                 msg.data = True
                 # turn duckiebot into rescue mode
@@ -278,19 +303,6 @@ class RescueCenterNode(DTROS):
                 self.pub_rescue_classfication[idx].publish(str(rescue_class.value))
                 # note down so can skip the next time
                 self.id_dict[idx].in_rescue = True
-
-
-    def cbFSM(self, msg, veh_id):
-        """Callback when the fsm state of a bot changed
-        
-        Args: 
-            msg: ROS message (Float64Array)
-            veh_id: ID of duckiebot
-        """
-
-        if veh_id in self.id_dict:
-            self.log("Duckiebot [{}] FSM state <{}>".format(veh_id, msg.state))
-            self.id_dict[veh_id].fsm_state = msg.state
 
 
 if __name__ == '__main__':

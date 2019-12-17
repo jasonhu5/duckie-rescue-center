@@ -149,7 +149,7 @@ class RescueAgentNode(DTROS):
         self.autobot_info.headingSimple = msg.headingSimple
         self.autobot_info.positionSimple = (
             msg.positionSimple[0], msg.positionSimple[1])
-        self.autobot_info.monitoringActivated = msg.monitoringActivated
+        self.autobot_info.classificationActivated = msg.classificationActivated
 
     def cb_distress_classification(self, msg):
         """Callback function triggered by self.sub_distress_classification:
@@ -288,7 +288,7 @@ class RescueAgentNode(DTROS):
         while not rospy.is_shutdown():
             if self.activated:
                 # monitoring is deactivated
-                if self.autobot_info.monitoringActivated == False:
+                if self.autobot_info.classificationActivated == False:
                     self.activated = False
                     self.stopDuckiebot()
                     print("[{}] Monitoring deactivated in rescue: stop duckiebot")
