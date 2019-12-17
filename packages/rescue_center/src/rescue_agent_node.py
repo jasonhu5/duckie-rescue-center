@@ -259,7 +259,8 @@ class RescueAgentNode(DTROS):
         msg.data = True
         self.pub_rescueDone.publish(msg)
         self.controller_counter = 0
-    
+        rospy.set_param('/rescue/rescue_center/trigger_rescue', False) 
+
     def updatePositionAndHeading(self):
         """ Updates current position and heading from autobotInfo, depending on simple localization is on or off
         """

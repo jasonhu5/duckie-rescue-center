@@ -160,16 +160,10 @@ class RescueCenterNode(DTROS):
             msg: ROS message (Float64MultiArray)
         """
 
-        # TODO: Jason will change the simple localization output from tag id to autobot id
-        if (msg.data[0] == 426):
-            veh_id = 27
-        elif (msg.data[0] == 425):
-            veh_id = 26
-        else:
-            veh_id = msg.data[0]
-        
-        self.id_dict[veh_id].positionSimple = (msg.data[1], msg.data[2])
-        self.id_dict[veh_id].headingSimple = msg.data[3] 
+        veh_id = int(msg.data[0])
+        if veh_id in self.id_dict:
+            self.id_dict[veh_id].positionSimple = (msg.data[1], msg.data[2])
+            self.id_dict[veh_id].headingSimple = msg.data[3]
         # if self.id_dict[veh_id].lastPosititionSimple[0]:
         #     distance = math.sqrt((self.id_dict[veh_id].positionSimple[0]-self.id_dict[veh_id].lastPosititionSimple[0])**2
         #                         (self.id_dict[veh_id].positionSimple[1]-self.id_dict[veh_id].lastPosititionSimple[1])**2)
@@ -178,13 +172,6 @@ class RescueCenterNode(DTROS):
         #         self.id_dict[veh_id].lastPosititionSimple = self.id_dict[veh_id].positionSimple
         self.id_dict[veh_id].last_movedSimple = msg.data[4] # in s
         self.pub_autobot_info[veh_id].publish(self.id_dict[veh_id].autobotInfo2Msg())
-        # For debugging
-        # position_ideal_debug = self.map.pos_to_ideal_position(self.id_dict[veh_id].positionSimple, heading=self.id_dict[veh_id].headingSimple)
-        # print("[{}]current_pos: {}, ideal_pos: {}, onRoad: {}, heading: {}".format(veh_id,  
-        #     self.id_dict[veh_id].positionSimple, position_ideal_debug, self.id_dict[veh_id].onRoad,
-        #     self.id_dict[veh_id].headingSimple))
-        # print("[{}] Received simple localization: ({}, {}, {})".format(veh_id, msg.data[1], msg.data[2], msg.data[3]))
-        # print("[{}] Received simple localization: ({}, {})".format(veh_id, self.id_dict[veh_id].positionSimple, self.id_dict[veh_id].headingSimple))
     
     def cbEverythingOk(self, msg, veh_id):
         """Callback of RescueAgent, which signals that the rescue operation is over

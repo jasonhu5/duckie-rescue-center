@@ -8,7 +8,7 @@ from visualization_msgs.msg import Marker, MarkerArray
 from rescue_center.msg import AutobotInfoMsg
 
 
-TIME_DIFF_THRESHOLD = 100
+TIME_DIFF_THRESHOLD = 10
 ANGLE_TRHESHOLD = 70
 
 class AutobotInfo():
@@ -172,8 +172,12 @@ class AutobotInfo():
             # stuck at intersection 
             if self.fsm_state == "INTERSECTION_CONTROL" or self.fsm_state == "INTERSECTION_COORDINATION":
                 # duckiebot at intersection
+                print("[{}] at intersection.".format(self.veh_id))
                 if self.time_diff > TIME_DIFF_THRESHOLD * 3:                      # TODO: parametrize
                     self.rescue_class = Distress.STUCK_AT_INTERSECTION
+                    return self.rescue_class
+                else: 
+                    self.rescue_class = Distress.NORMAL_OPERATION
                     return self.rescue_class
             # stuck in intersection
             if tile_type == '4way' or tile_type == '3way':
@@ -215,7 +219,3 @@ class Distress(Enum):
     STUCK_IN_INTERSECTION = 4
     STUCK_GENERAL = 5
     DEBUG = 6
-
-    # CRASHED_BOT = 2
-    # CRASHED_INFRA = 3
-    # KEEP_CALM = 4
