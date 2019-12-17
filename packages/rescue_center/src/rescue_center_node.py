@@ -197,7 +197,6 @@ class RescueCenterNode(DTROS):
             self.id_dict[veh_id].headingSimple = msg.data[3]
             self.id_dict[veh_id].current_pos = (msg.data[1], msg.data[2])
             self.id_dict[veh_id].current_heading = msg.data[3]
-            print("Received simpleLoc Heading:",  msg.data[3])
         self.id_dict[veh_id].last_movedSimple = msg.data[4] # in s
         self.pub_autobot_info[veh_id].publish(self.id_dict[veh_id].autobotInfo2Msg())
     
@@ -253,7 +252,6 @@ class RescueCenterNode(DTROS):
 
             # Store position from localization system in AutoboInfo()
             self.id_dict[idx].update_from_marker(m)
-            print("Received onlineLoc Heading:",  self.id_dict[idx].heading)
 
             # Filter position and update last_moved time stamp
             self.id_dict[idx].update_filtered(

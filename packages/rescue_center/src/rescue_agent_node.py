@@ -203,6 +203,10 @@ class RescueAgentNode(DTROS):
         if debug_param:
             return True
 
+        if self.autobot_info.rescue_class == Distress.STUCK_IN_INTERSECTION:
+            if self.tileType == '4way' or self.tileType == '3way':
+                return False
+
         # check,if duckiebot is back in lane
         if recalculateDesired:
             desired_pos = self.map.pos_to_ideal_position(self.autobot_info.current_pos)
@@ -216,8 +220,8 @@ class RescueAgentNode(DTROS):
             (desired_pos[0] - self.autobot_info.current_pos[0])**2 + (desired_pos[1] - self.autobot_info.current_pos[1])**2)
         print("delta_phi: {}, delta_d: {}".format(delta_phi, delta_d))
         if delta_d < tol_pos and delta_phi < tol_angle:
-            if self.tileType != '4way' or self.tileType != '3way':
-                return True
+            return True
+            
         # if duckiebot is not back in lane
         return False
     
@@ -253,18 +257,6 @@ class RescueAgentNode(DTROS):
         self.controller_counter = 0
         rospy.set_param('/rescue/rescue_center/trigger_rescue', False) 
 
-    # def updatePositionAndHeading(self):
-    #     """ Updates current position and heading from autobotInfo, depending on simple localization is on or off
-    #     """
-    #     if self.autobot_info.positionSimple[0] == 0 and self.autobot_info.positionSimple[1] == 0:
-    #         # simple localization has not been triggered yet (duckiebot did not move) --> take normal localization output
-    #         self.current_pos = self.autobot_info.position  # (x, y)
-    #         self.current_heading = self.autobot_info.heading  # degree
-    #     else:
-    #         # use simple localization
-    #         self.current_pos = self.autobot_info.positionSimple  # (x, y)
-    #         self.current_heading = self.autobot_info.headingSimple  # degree
-
     def run(self):
         """Main loop of ROS node
 
@@ -279,6 +271,8 @@ class RescueAgentNode(DTROS):
 
         while not rospy.is_shutdown():
             if self.activated:
+                 # in rescue operation
+
                 # monitoring is deactivated
                 if self.autobot_info.classificationActivated == False:
                     self.activated = False
@@ -288,9 +282,9 @@ class RescueAgentNode(DTROS):
                     msg.data = True
                     self.pub_rescueStopped.publish(msg)
                     self.controller_counter = 0
-                # in rescue operation
+                    continue
 
-                # --- GET CURRENT POSITION ---#
+                # --- GET CURRENT POSITION ON MAP ---#
                 # self.updatePositionAndHeading()
                 self.tileType = self.map.pos_to_semantic(self.autobot_info.current_pos)
                 print("[{}] Current: pos = {}, phi = {}".format(
@@ -301,9 +295,9 @@ class RescueAgentNode(DTROS):
                     self.autobot_info.current_pos, heading=self.autobot_info.current_heading)
                 # check, if at bad position
                 if desired_pos == float('inf') or desired_pos == None:
-                    # TODO: when does it return None again?
+                    # inf: out of map, None: out of map and no good entry point found 
                     # No good rescue point found: e.g. on asphalt next to curves
-                    print('[{}] no good point found! Going backwards now...'.format(self.veh_id))
+                    print('[{}] no good point found or out of map! Going backwards now...'.format(self.veh_id))
                     self.current_car_cmd.v = -self.v_ref
                     self.current_car_cmd.omega = 0
                     self.pub_car_cmd.publish(self.current_car_cmd)
@@ -312,6 +306,7 @@ class RescueAgentNode(DTROS):
                     self.stopDuckiebot()
                     sleep(T_STOP)
                     continue
+
                 # Check, if duckiebot drove into intersection: 4-way or 3-way:
                 if self.tileType == '4way' or self.tileType == '3way':
                     if self.autobot_info.rescue_class != Distress.STUCK_IN_INTERSECTION: 

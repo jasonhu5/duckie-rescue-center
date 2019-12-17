@@ -1,0 +1,6 @@
+<launch>
+    <group ns="rescue">
+        <node pkg="bot_reaction" type="bot_reaction_node.py" name="bot_reaction_node" output="screen">
+        </node>
+    </group>
+</launch>
