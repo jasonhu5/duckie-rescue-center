@@ -10,12 +10,12 @@ dts devel build -f --arch amd64
 
 How to run:
 ```
-docker run --name rescue_center --network=host -it --rm -e ROS_MASTER_IP=http://<LAB_SERVER_IP>:11311 duckietown/duckie-rescue-center:v1-amd64
+docker run --name rescue_center --network=host -it --rm -e ROS_MASTER_IP=http://<LAB_SERVER_IP>:11311 -e MAP_FORK=<DUCKIETOWN-WORLD_GITHUB_FORK> -e MAP_NAME=<NAME_OF_MAP_WITHOUT_.yaml_SUFFIX> duckietown/duckie-rescue-center:v1-amd64
 ```
 
 For example:
 ```
-docker run --name rescue_center --network=host -it --rm -e ROS_MASTER_IP=http://192.168.1.187:11311 -e K_P=10 -e K_I=0 -e C1=-5 -e C2=1 duckietown/duckie-rescue-center:v1-amd64
+docker run --name rescue_center --network=host -it --rm -e ROS_MASTER_IP=http://192.168.1.187:11311 -e K_P=10 -e K_I=0 -e C1=-5 -e C2=1 -e MAP_FORK=jasonhu5 -e MAP_NAME=ethz_amod_lab_k31 duckietown/duckie-rescue-center:v1-amd64
 ```
 
 For reference: [unicode characters used for map visualization](https://www.compart.com/en/unicode/block/U+2500)
@@ -36,13 +36,10 @@ docker -H autobot27.local run --name rescue-acquisition-bridge --rm --network=ho
 docker run -it --rm --net host duckietown/dt-ros-commons:daffy-amd64 /bin/bash
 dts start_gui_tools duckietown9
 
+* To add bot to be monitored by rescue system
 rosparam set /rescue/rescue_center/add_duckiebot 27
-rosparam set /rescue/rescue_center/change_classified_duckiebots true
+* To remove bot from being monitored by rescue system
 rosparam set /rescue/rescue_center/remove_duckiebot 27
-rosparam set /rescue/rescue_center/change_classified_duckiebots true
-
-
-
 
 
 # Martins Questions

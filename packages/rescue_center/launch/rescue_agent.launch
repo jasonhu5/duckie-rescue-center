@@ -5,6 +5,7 @@
           <param name="~distressed_veh" type="string" value="autobot$(arg botID)" />
           <param name="~everythingOK" type="bool" value="false" />
           <param name="~velocity_backwards" type="double" value="-0.1"/>
+          <param name="~demo_mode" type="bool" value="false"/>
         </node>
     </group>
 </launch>   

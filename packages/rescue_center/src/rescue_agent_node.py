@@ -76,37 +76,48 @@ class RescueAgentNode(DTROS):
 
         # inialize attributes
         self.veh_name = rospy.get_param("~distressed_veh")
-        self.veh_id = int(
-            ''.join([x for x in self.veh_name if x.isdigit()]))
+        self.veh_id = int(''.join([x for x in self.veh_name if x.isdigit()]))
         self.activated = False
         self.autobot_info = AutobotInfo(self.veh_id)
-        # TODO: save map path somewhere
+        # map file
         map_file_path = os.path.join(
-            "/code/catkin_ws/src",
-            "duckie-rescue-center/packages/rescue_center/src",
-            "test_map.yaml"
+            "/duckietown-world/src/duckietown_world/data/gd1",
+            "maps/{}.yaml".format(os.environ["MAP_NAME"]),
         )
         self.map = SimpleMap(map_file_path)
+
         self.current_car_cmd = Twist2DStamped()
         self.current_car_cmd.v = 0
         self.current_car_cmd.omega = 0
+
         self.controller_counter = 0
         self.v_ref = V_REF_CONTROLLER
+
         self.desired_pos = None
         self.desired_heading = None
+
+        # closed loop controller
         self.controller = StuckController(
-            k_P=KP_CONTROLLER, k_I=KI_CONTROLLER, c1=C1_CONTROLLER, c2=C2_CONTROLLER)
+            k_P=KP_CONTROLLER,
+            k_I=KI_CONTROLLER,
+            c1=C1_CONTROLLER,
+            c2=C2_CONTROLLER
+        )
         self.tileType = None
 
         # Subscriber
-        self.sub_distress_classification = rospy.Subscriber("/{}/distress_classification".format(self.veh_name),
-                                                            String, self.cb_distress_classification)
+        self.sub_distress_classification = rospy.Subscriber(
+            "/{}/distress_classification".format(self.veh_name),
+            String,
+            self.cb_distress_classification
+        )
+
         self.sub_autobot_info = rospy.Subscriber(
             "/{}/autobot_info".format(
                 self.veh_name), AutobotInfoMsg, self.cb_autobot_info
         )
 
-        # Publisher
+        # Publishers
         self.pub_rescueDone = rospy.Publisher(
             "{}/rescueDone/".format(self.veh_name), BoolStamped, queue_size=1)
         self.pub_car_cmd = rospy.Publisher(
@@ -114,13 +125,9 @@ class RescueAgentNode(DTROS):
             Twist2DStamped,
             queue_size=1,
         )
-        self.pub_test = rospy.Publisher(
-            "/rescue_agents/test",
-            String,
-            queue_size=1,
-        )
         self.pub_rescueStopped = rospy.Publisher(
             "{}/rescueStopped/".format(self.veh_name), BoolStamped, queue_size=1)
+
 
     def cb_autobot_info(self, msg):
         """Callback function triggered by self.sub_autobot_info:
@@ -133,7 +140,6 @@ class RescueAgentNode(DTROS):
 
             Returns: None
         """
-        self.pub_test.publish("Got info for {}".format(self.veh_name))
         self.autobot_info.timestamp = msg.timestamp
         self.autobot_info.fsm_state = msg.fsm_state
         self.autobot_info.filtered = (msg.filtered[0], msg.filtered[1])
@@ -148,9 +154,11 @@ class RescueAgentNode(DTROS):
 
         self.autobot_info.classificationActivated = msg.classificationActivated
 
+
     def cb_distress_classification(self, msg):
         """Callback function triggered by self.sub_distress_classification:
-                - stops duckiebot, saves distress type in self.autobot_info and triggers rescue operation
+                - stops duckiebot, saves distress type in self.autobot_info and
+                  triggers rescue operation
 
             Args:
             - msg (:obj:`AutobotInfoMsg`): received message
@@ -161,7 +169,19 @@ class RescueAgentNode(DTROS):
         """
         distress_type_num = int(msg.data)
         if distress_type_num > 0:
-            # NOTE: this should always be the case, since rescue_center_node only publishes, if rescue_class > 0
+            # NOTE: this should always be the case
+            # since rescue_center_node only publishes, if rescue_class > 0
+
+            # Added for AMoD class demo. Stop a little longer for LEDs to change
+            if (rospy.get_param("~demo_mode")):
+                rate = rospy.Rate(5)  # 5Hz
+                counter = 0
+                delay_time = 5*3  # 3 seconds
+                while counter <= delay_time:
+                    self.stopDuckiebot()
+                    counter += 1
+                    rate.sleep()
+
             self.stopDuckiebot()
             print("[{}] distressed at: pos = {}, phi = {}".format(
                 self.veh_id, self.autobot_info.current_pos, self.autobot_info.current_heading))
@@ -169,6 +189,7 @@ class RescueAgentNode(DTROS):
             self.autobot_info.rescue_class = Distress(distress_type_num)
             print("[{}] Distressed class: {}".format(
                 self.veh_id, self.autobot_info.rescue_class))
+
 
     def readyForLF(self, recalculateDesired=True, tol_angle=TOL_ANGLE_IN_DEG, tol_pos=TOL_POSITION_IN_M):
         """Checks, if duckiebot is ready for lane following (after rescue operation)
@@ -204,7 +225,9 @@ class RescueAgentNode(DTROS):
         delta_phi = abs(self.autobot_info.current_heading-desired_heading)
         delta_phi = min(delta_phi, 360-delta_phi)
         delta_d = math.sqrt(
-            (desired_pos[0] - self.autobot_info.current_pos[0])**2 + (desired_pos[1] - self.autobot_info.current_pos[1])**2)
+            (desired_pos[0] - self.autobot_info.current_pos[0])**2 +
+            (desired_pos[1] - self.autobot_info.current_pos[1])**2
+        )
         print("delta_phi: {}, delta_d: {}".format(delta_phi, delta_d))
         if delta_d < tol_pos and delta_phi < tol_angle:
             return True
@@ -212,6 +235,7 @@ class RescueAgentNode(DTROS):
         # if duckiebot is not ready for LF
         return False
     
+
     def stopDuckiebot(self):
         """Stops duckiebot
 
@@ -227,6 +251,7 @@ class RescueAgentNode(DTROS):
         self.current_car_cmd = car_cmd
         self.pub_car_cmd.publish(self.current_car_cmd)
     
+
     def goBackToLF(self):
         """Duckiebot goes back to lane following
 
@@ -243,6 +268,7 @@ class RescueAgentNode(DTROS):
         self.pub_rescueDone.publish(msg)
         self.controller_counter = 0
         rospy.set_param('/rescue/rescue_center/trigger_rescue', False) 
+
 
     def run(self):
         """Main loop of ROS node
@@ -320,7 +346,13 @@ class RescueAgentNode(DTROS):
                 if self.controller_counter < NUMBER_RESCUE_CMDS:
                     # Calculate controller output
                     v_out, omega_out = self.controller.getControlOutput(
-                        self.autobot_info.current_pos, self.autobot_info.current_heading, self.desired_pos, self.desired_heading, v_ref=self.v_ref, dt_last=T_EXECUTION)
+                        self.autobot_info.current_pos,
+                        self.autobot_info.current_heading,
+                        self.desired_pos,
+                        self.desired_heading,
+                        v_ref=self.v_ref,
+                        dt_last=T_EXECUTION
+                    )
                     print("[{}]: v = {}, omega = {}".format(
                         self.veh_id, v_out, omega_out))
                     # Send cmd to duckiebot

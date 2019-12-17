@@ -1,13 +1,9 @@
 <launch>
     <group ns="rescue">
         <node pkg="rescue_center" type="rescue_center_node.py" name="rescue_center" output="screen">
-          <param name="~trigger_rescue" type="bool" value="false"/>
           <param name="~dist_thres" type="double" value="0.5"/>
-          <param name="~avg_window" type="int" value="10"/>
-          <param name="~change_classified_duckiebots" type="bool" value="false"/>
           <param name="~add_duckiebot" type="int" value="-1"/>
           <param name="~remove_duckiebot" type="int" value="-1"/>
-          <!-- TODO: pass map yaml file -->
         </node>
     </group>
 </launch>
