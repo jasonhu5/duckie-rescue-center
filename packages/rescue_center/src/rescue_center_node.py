@@ -311,7 +311,5 @@ class RescueCenterNode(DTROS):
 if __name__ == '__main__':
     # create the node
     node = RescueCenterNode(node_name='rescue_trigger_node')
-    # # run node
-    # node.run()
     # keep spinning
     rospy.spin()

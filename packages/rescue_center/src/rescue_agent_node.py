@@ -51,10 +51,9 @@ class RescueAgentNode(DTROS):
         - desired_pos(tuple (float, float)): current desired position for rescue operation
         - desired_heading (float): current desired heading for rescue operation (-180 DEG --> 180 DEG, 0 DEG facing positive x-Direction)
         - current_car_cmd (:obj:`Twist2DStamped`): car command, which is being sent to the duckiebot
-        - currentPosition: TODO
-        - currentHeading: TODO
+        - tile_type (str):  tile type, the duckiebot is driving/standing on: e.g. "asphalt", "curve", etc.
+
     Subscriber:
-        TODO: define message type Distress and directly pass that (in rescue center)
         - sub_distress_classification: /[self.veh_name]/distress_classification (:obj:`String`):
             distress classification from rescue center as rescue_class.value (int converted to String)
         - sub_autobot_info: /[self.veh_name]/autobot_info (:obj: `AutobotInfoMsg`):
@@ -97,9 +96,6 @@ class RescueAgentNode(DTROS):
         self.desired_heading = None
         self.controller = StuckController(
             k_P=KP_CONTROLLER, k_I=KI_CONTROLLER, c1=C1_CONTROLLER, c2=C2_CONTROLLER)
-        self.currentPosition = (None, None)
-        self.currentHeading = None
-
         self.tileType = None
 
         # Subscriber
@@ -140,16 +136,11 @@ class RescueAgentNode(DTROS):
         self.pub_test.publish("Got info for {}".format(self.veh_name))
         self.autobot_info.timestamp = msg.timestamp
         self.autobot_info.fsm_state = msg.fsm_state
-        # self.autobot_info.position = (msg.position[0], msg.position[1])
         self.autobot_info.filtered = (msg.filtered[0], msg.filtered[1])
         self.autobot_info.last_moved = msg.last_moved
         self.autobot_info.last_movedSimple = msg.last_movedSimple
         self.autobot_info.in_rescue = msg.in_rescue
         self.autobot_info.onRoad = msg.onRoad
-        # self.autobot_info.heading = msg.heading
-        # self.autobot_info.headingSimple = msg.headingSimple
-        # self.autobot_info.positionSimple = (
-        #     msg.positionSimple[0], msg.positionSimple[1])
 
         self.autobot_info.current_heading = msg.current_heading
         self.autobot_info.current_pos = (
@@ -178,10 +169,6 @@ class RescueAgentNode(DTROS):
             self.autobot_info.rescue_class = Distress(distress_type_num)
             print("[{}] Distressed class: {}".format(
                 self.veh_id, self.autobot_info.rescue_class))
-
-            # TODO: only need this, if we want to fix a desired point
-            # 
-
 
     def readyForLF(self, recalculateDesired=True, tol_angle=TOL_ANGLE_IN_DEG, tol_pos=TOL_POSITION_IN_M):
         """Checks, if duckiebot is ready for lane following (after rescue operation)
@@ -222,7 +209,7 @@ class RescueAgentNode(DTROS):
         if delta_d < tol_pos and delta_phi < tol_angle:
             return True
             
-        # if duckiebot is not back in lane
+        # if duckiebot is not ready for LF
         return False
     
     def stopDuckiebot(self):
@@ -269,6 +256,7 @@ class RescueAgentNode(DTROS):
         # publish rate
         rate = rospy.Rate(4)  # 10Hz
 
+        # --- MAIN LOOP FOR RESCUE CONTROL -- #
         while not rospy.is_shutdown():
             if self.activated:
                  # in rescue operation

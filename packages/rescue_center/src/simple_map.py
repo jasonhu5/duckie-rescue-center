@@ -8,8 +8,25 @@ import yaml
 import re
 
 class SimpleMap():
+    """ 
+    This is a class for providing function to locate duckiebots on a given map and 
+    returning semantic information and desired positions
+      
+    Attributes: 
+        - tile_size (float): size of a tile
+        - searchDivider (int): parameter used for desired position search raduis
+        - curve_left_c (dict {(str): tuple(int, int)): orientation of curve_left
+        - curve_right_c (dict {(str): tuple(int, int)): orientation of curve_right
+        - threeway_left_c (dict {(str): tuple(int, int)): orientation of threeway_left
+        - threeway_right_c (dict {(str): tuple(int, int)): orientation of threeway_right
+        - fourway_c ([tuple(int, int), tuple(int, int), tuple(int, int), tuple(int, int)]): orientation of fourway_right
+        - boarders (list(str)): possible white line orientations
+        - map_raw (list(list(string))): raw map from yaml 
+        - map_bin (np.array(int)): binary map 0/1
+        - map_state (np.array(string)): map with tile names
+        - map_sem list(list(Tile): map with specific information about the tiles
+    """
 
-    ''' --- INITIALIZE --- '''
 
     def __init__(self, map_file):
         """Init method, to generate a new map from a yaml file
@@ -32,8 +49,6 @@ class SimpleMap():
         # Map specific parameters
         # https://docs.duckietown.org/daffy/opmanual_duckietown/out/dt_ops_appearance_specifications.html
         self.tile_size = tile_size
-        self.margin = 0.08
-        self.toStop = 0.1
         self.searchDivider = 4 # divider of tile_size
 
         # Tile specific orientation
@@ -314,20 +329,6 @@ class SimpleMap():
                         if self.exit_cost(ideal_pos, position, rev_h, h, ideal_heading) < cost:
                             coordinates = ideal_pos
                             cost = self.exit_cost(ideal_pos, position, rev_h, h, ideal_heading)
-        # elif tile.type == '4way':
-        #     # find position on intersection
-        #     quarter_x = round((position[0]%self.tile_size)/self.tile_size)
-        #     quarter_y = round((position[1]%self.tile_size)/self.tile_size)
-        #     straight_sign_x = 2*(quarter_x-0.5)
-        #     straight_sign_y = 2*(quarter_y-0.5)
-        #     print(quarter_x, quarter_y)
-        #     if bool(quarter_x) != bool(quarter_y):
-        #         coord_x = position[0]
-        #         coord_y = ((1-quarter_x) + tile_y)*self.tile_size + straight_sign_y*self.toStop
-        #     else:
-        #         coord_x = (quarter_y + tile_x)*self.tile_size + straight_sign_x*self.toStop
-        #         coord_y = position[1]
-        #     coordinates = self.pos_to_ideal_position((coord_x, coord_y))
         elif tile.type == '3way' or tile.type == '4way':
             # find closest center
             closest_distance = float('inf')

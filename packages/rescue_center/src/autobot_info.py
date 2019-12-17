@@ -12,12 +12,40 @@ TIME_DIFF_THRESHOLD = 10
 ANGLE_TRHESHOLD = 70
 
 class AutobotInfo():
-
-    ''' --- INITIALIZE --- '''
+    """ 
+    This is a class for saving all relevant information of a autobot. 
+    It further provides a function for classification.
+      
+    Attributes: 
+        - timestamp (float): When did it get updated the last time (in sec)
+        - fsm_state (str): current FSM state of the duckiebot: e.g. "LANE_FOLLOWING"
+        - position ((float, float)): position measurement from cslam localization
+        - positionSimple ((float, float)): position measurement from simple localization
+        - current_pos ((float, float)): position measurement, which is taken for further calculations/classification
+        - filtered ((float, float)): filteredPosition for checking last movement of duckiebot
+        - heading (float): heading measurement from cslam localization in DEG
+        - headingSimple (float): heading measurement from simple localization
+        - currentHeading (float): heading measurement, which is taken for further calculations/classification
+        - last_moved (float): time of last detected movement from cslam localization
+        - last_movedSimple (float): time of last detected movement from simple localization
+        - time_diff (float): time passed from last movement (take the last detected movement from cslam or simple localization)
+        - in_rescue (boolean): is autobot in rescue mode?
+        - onRoad (boolean): is autobot on road?
+        - rescueClass (:obj: Distress): how is the autobot distressed? e.g. Distress.OUT_OF_LANE
+        - veh_id (int): autobot ID
+        - classificationActivated (bool): is classification for that autobot activated? 
+            True: autobot is classified and rescued
+            False: only monitored
+        - delta_phi (float): error in current heading and desired heading
+        - tile_type (str): on what kind of tile is the duckiebot? e.g. "asphalt", "curve", etc.
+        
+    """
 
     def __init__(self, veh_id):
-        """Initilialize AutobotInfo object to default values
-        no arguments required
+        """Initilialize AutobotInfo object to default values:
+
+            Args: 
+                - veh_id (int): id of duckiebot
 
         """
         self.timestamp = None
@@ -46,6 +74,11 @@ class AutobotInfo():
 
     def updatePositionAndHeading(self):
         """ Updates current position and heading, depending on simple localization is on or off
+
+            Args: None
+
+            Output: None
+
         """
         if (self.positionSimple[0] == 0 and self.positionSimple[1] == 0) or self.positionSimple[0] == None:
             # simple localization has not been triggered yet (duckiebot did not move) --> take normal localization output
@@ -65,6 +98,8 @@ class AutobotInfo():
 
         Args:
             m: AutoBotInfo ROS message
+
+        Output: None
     
         """
         self.timestamp = m.header.stamp.to_sec()
@@ -78,6 +113,7 @@ class AutobotInfo():
         Args:
             threshold: movement in [cm] before bot is seen as "has moved"
 
+        Output: None
         """
         # timestamp of type genpy.rostime.Time
         if self.distance(self.position, self.filtered) > threshold:
@@ -113,17 +149,10 @@ class AutobotInfo():
             msg.onRoad = self.onRoad
         if self.rescue_class:
             msg.rescue_class = self.rescue_class.value 
-        # if self.heading:
-        #     msg.heading = self.heading
         if self.current_heading:
             msg.current_heading = self.current_heading
         if self.current_pos[0]:
             msg.current_pos = [self.current_pos[0], self.current_pos[1]]
-        # for simpleLoc:
-        # if self.positionSimple[0]:
-        #     msg.positionSimple = [self.positionSimple[0], self.positionSimple[1]]
-        # if self.headingSimple:
-        #     msg.headingSimple = self.headingSimple
         
         msg.classificationActivated = self.classificationActivated
         return msg    
@@ -200,33 +229,6 @@ class AutobotInfo():
         if  self.delta_phi > ANGLE_TRHESHOLD and self.tile_type == 'straight':
             return True
         return False
-            
-    # def stuck(self):
-    #     # calculate time_diff
-    #     if self.last_movedSimple:
-    #         self.time_diff = self.timestamp-max(self.last_moved, self.last_movedSimple)
-    #     else:
-    #         self.time_diff = self.timestamp-self.last_moved
-    #     if self.time_diff > TIME_DIFF_THRESHOLD: 
-    #         print("[{}] has not moved for more than {} s. Check if at intersection".format(self.veh_id, type(TIME_DIFF_THRESHOLD)))
-    #         # stuck at intersection 
-    #         if self.fsm_state == "INTERSECTION_CONTROL" or self.fsm_state == "INTERSECTION_COORDINATION":
-    #             # duckiebot at intersection
-    #             if self.time_diff > TIME_DIFF_THRESHOLD * 3:            
-    #                 self.rescue_class = Distress.STUCK_AT_INTERSECTION
-    #                 return self.rescue_class
-    #             else: 
-    #                 print("[{}] at intersection: will wait a little longer to classify as stuck")
-    #                 self.rescue_class = Distress.NORMAL_OPERATION
-    #                 return self.rescue_class
-    #         # stuck in intersection
-    #         if self.tile_type == '4way' or self.tile_type == '3way':
-    #             self.rescue_class = Distress.STUCK_IN_INTERSECTION
-    #             return self.rescue_class
-    #         # stuck general
-    #         self.rescue_class = Distress.STUCK_GENERAL
-    #         return self.rescue_class
-        
 
     def quat2angle(self, q):
         siny_cosp = 2 * (q.w*q.z + q.x*q.y)
