@@ -15,10 +15,6 @@ class BotReactionNode(DTROS):
         # initialize DTROS parent class
         super(BotReactionNode, self).__init__(node_name=node_name)
 
-        ## parameters
-        # self.parameters['~dist_thres'] = 0.01
-        # self.updateParameters()
-
         # Subscribe to topics
         self.veh_list = [25, 26, 27, 28]
         self.sub_list = {}
