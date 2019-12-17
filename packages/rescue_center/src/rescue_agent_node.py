@@ -140,15 +140,21 @@ class RescueAgentNode(DTROS):
         self.pub_test.publish("Got info for {}".format(self.veh_name))
         self.autobot_info.timestamp = msg.timestamp
         self.autobot_info.fsm_state = msg.fsm_state
-        self.autobot_info.position = (msg.position[0], msg.position[1])
+        # self.autobot_info.position = (msg.position[0], msg.position[1])
         self.autobot_info.filtered = (msg.filtered[0], msg.filtered[1])
         self.autobot_info.last_moved = msg.last_moved
+        self.autobot_info.last_movedSimple = msg.last_movedSimple
         self.autobot_info.in_rescue = msg.in_rescue
         self.autobot_info.onRoad = msg.onRoad
-        self.autobot_info.heading = msg.heading
-        self.autobot_info.headingSimple = msg.headingSimple
-        self.autobot_info.positionSimple = (
-            msg.positionSimple[0], msg.positionSimple[1])
+        # self.autobot_info.heading = msg.heading
+        # self.autobot_info.headingSimple = msg.headingSimple
+        # self.autobot_info.positionSimple = (
+        #     msg.positionSimple[0], msg.positionSimple[1])
+
+        self.autobot_info.current_heading = msg.current_heading
+        self.autobot_info.current_pos = (
+            msg.current_pos[0], msg.current_pos[1])
+
         self.autobot_info.classificationActivated = msg.classificationActivated
 
     def cb_distress_classification(self, msg):
@@ -166,27 +172,15 @@ class RescueAgentNode(DTROS):
         if distress_type_num > 0:
             # NOTE: this should always be the case, since rescue_center_node only publishes, if rescue_class > 0
             self.stopDuckiebot()
-            self.updatePositionAndHeading()
             print("[{}] distressed at: pos = {}, phi = {}".format(
-                self.veh_id, self.current_pos, self.current_heading))
+                self.veh_id, self.autobot_info.current_pos, self.autobot_info.current_heading))
             self.activated = True
             self.autobot_info.rescue_class = Distress(distress_type_num)
             print("[{}] Distressed class: {}".format(
                 self.veh_id, self.autobot_info.rescue_class))
 
-            desired_pos = self.map.pos_to_ideal_position(
-            self.current_pos, heading=self.current_heading)
-            if desired_pos is not None:
-                if desired_pos != float('inf'):
-                    print("[{}] There is a desired position: {}.".format(
-                        self.veh_id, desired_pos))
-                    self.desired_pos = desired_pos
-                else:
-                    print("[{}] Desired position is not on map") #TODO: how to rescue?
-            else:
-                print("[{}] There is no desired position yet.".format(self.veh_id))
-            
-            print("[{}] Starting rescue operation now".format(self.veh_id))
+            # TODO: only need this, if we want to fix a desired point
+            # 
 
 
     def readyForLF(self, recalculateDesired=True, tol_angle=TOL_ANGLE_IN_DEG, tol_pos=TOL_POSITION_IN_M):
@@ -210,18 +204,16 @@ class RescueAgentNode(DTROS):
             return True
 
         # check,if duckiebot is back in lane
-        current_pos = self.autobot_info.positionSimple  # (x, y)
-        current_heading = self.autobot_info.headingSimple  # degree
         if recalculateDesired:
-            desired_pos = self.map.pos_to_ideal_position(current_pos)
+            desired_pos = self.map.pos_to_ideal_position(self.autobot_info.current_pos)
             desired_heading = self.map.pos_to_ideal_heading(desired_pos)
         else:
             desired_pos = self.desired_pos
             desired_heading = self.desired_heading
-        delta_phi = abs(current_heading-desired_heading)
+        delta_phi = abs(self.autobot_info.current_heading-desired_heading)
         delta_phi = min(delta_phi, 360-delta_phi)
         delta_d = math.sqrt(
-            (desired_pos[0] - current_pos[0])**2 + (desired_pos[1] - current_pos[1])**2)
+            (desired_pos[0] - self.autobot_info.current_pos[0])**2 + (desired_pos[1] - self.autobot_info.current_pos[1])**2)
         print("delta_phi: {}, delta_d: {}".format(delta_phi, delta_d))
         if delta_d < tol_pos and delta_phi < tol_angle:
             if self.tileType != '4way' or self.tileType != '3way':
@@ -261,17 +253,17 @@ class RescueAgentNode(DTROS):
         self.controller_counter = 0
         rospy.set_param('/rescue/rescue_center/trigger_rescue', False) 
 
-    def updatePositionAndHeading(self):
-        """ Updates current position and heading from autobotInfo, depending on simple localization is on or off
-        """
-        if self.autobot_info.positionSimple[0] == 0 and self.autobot_info.positionSimple[1] == 0:
-            # simple localization has not been triggered yet (duckiebot did not move) --> take normal localization output
-            self.current_pos = self.autobot_info.position  # (x, y)
-            self.current_heading = self.autobot_info.heading  # degree
-        else:
-            # use simple localization
-            self.current_pos = self.autobot_info.positionSimple  # (x, y)
-            self.current_heading = self.autobot_info.headingSimple  # degree
+    # def updatePositionAndHeading(self):
+    #     """ Updates current position and heading from autobotInfo, depending on simple localization is on or off
+    #     """
+    #     if self.autobot_info.positionSimple[0] == 0 and self.autobot_info.positionSimple[1] == 0:
+    #         # simple localization has not been triggered yet (duckiebot did not move) --> take normal localization output
+    #         self.current_pos = self.autobot_info.position  # (x, y)
+    #         self.current_heading = self.autobot_info.heading  # degree
+    #     else:
+    #         # use simple localization
+    #         self.current_pos = self.autobot_info.positionSimple  # (x, y)
+    #         self.current_heading = self.autobot_info.headingSimple  # degree
 
     def run(self):
         """Main loop of ROS node
@@ -299,14 +291,14 @@ class RescueAgentNode(DTROS):
                 # in rescue operation
 
                 # --- GET CURRENT POSITION ---#
-                self.updatePositionAndHeading()
-                self.tileType = self.map.pos_to_semantic(self.current_pos)
+                # self.updatePositionAndHeading()
+                self.tileType = self.map.pos_to_semantic(self.autobot_info.current_pos)
                 print("[{}] Current: pos = {}, phi = {}".format(
-                    self.veh_id, self.current_pos, self.current_heading))
+                    self.veh_id, self.autobot_info.current_pos, self.autobot_info.current_heading))
 
                 # --- CALCULATE DESIRED POSITION ---#
                 desired_pos = self.map.pos_to_ideal_position(
-                    self.current_pos, heading=self.current_heading)
+                    self.autobot_info.current_pos, heading=self.autobot_info.current_heading)
                 # check, if at bad position
                 if desired_pos == float('inf') or desired_pos == None:
                     # TODO: when does it return None again?
@@ -345,7 +337,7 @@ class RescueAgentNode(DTROS):
                 if self.controller_counter < NUMBER_RESCUE_CMDS:
                     # Calculate controller output
                     v_out, omega_out = self.controller.getControlOutput(
-                        self.current_pos, self.current_heading, self.desired_pos, self.desired_heading, v_ref=self.v_ref, dt_last=T_EXECUTION)
+                        self.autobot_info.current_pos, self.autobot_info.current_heading, self.desired_pos, self.desired_heading, v_ref=self.v_ref, dt_last=T_EXECUTION)
                     print("[{}]: v = {}, omega = {}".format(
                         self.veh_id, v_out, omega_out))
                     # Send cmd to duckiebot

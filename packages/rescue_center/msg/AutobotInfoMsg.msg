@@ -1,11 +1,9 @@
 Header header
 float64 timestamp
 string fsm_state
-float64[2] position
-float64[2] positionSimple
+float64[2] current_pos
 float64[2] filtered
-float64 heading
-float64 headingSimple
+float64 current_heading
 float64 last_moved
 float64 last_movedSimple
 bool in_rescue

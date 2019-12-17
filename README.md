@@ -37,3 +37,6 @@ rosparam set /rescue/rescue_center/remove_duckiebot 27
 - Who triggers the FSM state change again? 
     - by rescue_center: /autobot[veh_id]/recovery_mode 
     - by rescue_agent: /autobot[veh_id]/rescueDone/
+
+# TODOs: 
+- for stuck at intersection: go back to LF, iff at straight again

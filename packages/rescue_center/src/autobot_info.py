@@ -70,6 +70,7 @@ class AutobotInfo():
         self.timestamp = m.header.stamp.to_sec()
         self.position = (m.pose.position.x, m.pose.position.y)
         self.heading = self.quat2angle(m.pose.orientation)
+        self.updatePositionAndHeading()
 
     def update_filtered(self, threshold):
         """Updates position value and timestamp only when movement detectd
@@ -98,8 +99,8 @@ class AutobotInfo():
             msg.timestamp = self.timestamp
         if self.fsm_state:
             msg.fsm_state = self.fsm_state
-        if self.position[0]:
-            msg.position = [self.position[0], self.position[1]]
+        # if self.position[0]:
+        #     msg.position = [self.position[0], self.position[1]]
         if self.filtered:
             msg.filtered = [self.filtered[0], self.filtered[1]]
         if self.last_moved:
@@ -112,13 +113,17 @@ class AutobotInfo():
             msg.onRoad = self.onRoad
         if self.rescue_class:
             msg.rescue_class = self.rescue_class.value 
-        if self.heading:
-            msg.heading = self.heading
+        # if self.heading:
+        #     msg.heading = self.heading
+        if self.current_heading:
+            msg.current_heading = self.current_heading
+        if self.current_pos[0]:
+            msg.current_pos = [self.current_pos[0], self.current_pos[1]]
         # for simpleLoc:
-        if self.positionSimple[0]:
-            msg.positionSimple = [self.positionSimple[0], self.positionSimple[1]]
-        if self.headingSimple:
-            msg.headingSimple = self.headingSimple
+        # if self.positionSimple[0]:
+        #     msg.positionSimple = [self.positionSimple[0], self.positionSimple[1]]
+        # if self.headingSimple:
+        #     msg.headingSimple = self.headingSimple
         
         msg.classificationActivated = self.classificationActivated
         return msg    
@@ -142,7 +147,7 @@ class AutobotInfo():
 
         """
         # update position and heading:
-        self.updatePositionAndHeading()       
+        # self.updatePositionAndHeading()       
         self.tile_type = map.pos_to_semantic(self.current_pos)
 
         # 0. debug mode: change through ros parameter
@@ -188,6 +193,8 @@ class AutobotInfo():
     
     def wrongHeading(self, map):
         desired_heading = map.pos_to_ideal_heading(self.current_pos)
+        if desired_heading == None:
+            return False
         delta_phi = abs(self.current_heading-desired_heading)
         self.delta_phi = min(delta_phi, 360-delta_phi)      
         if  self.delta_phi > ANGLE_TRHESHOLD and self.tile_type == 'straight':
